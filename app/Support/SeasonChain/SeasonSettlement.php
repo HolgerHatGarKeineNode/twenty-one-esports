@@ -97,7 +97,7 @@ final class SeasonSettlement
      * sats and the payout, with whether their profile has a valid Lightning
      * address (never the address itself).
      *
-     * @return array{rows: list<array{pubkey: string, user: User|null, name: string, blocks: int, voided_blocks: int, mined: int, voided: int, payout: int, heights: list<int>, has_address: bool, linked: bool}>, blocks: int, mined: int, voided: int, payout: int, voids: Collection<int, SeasonBlockVoid>, mismatch: string|null}
+     * @return array{rows: list<array{pubkey: string, user: User|null, name: string, blocks: int, voided_blocks: int, mined: int, voided: int, payout: int, heights: list<int>, has_address: bool, linked: bool}>, blocks: int, mined: int, voided: int, payout: int, rest: int, voids: Collection<int, SeasonBlockVoid>, mismatch: string|null}
      */
     public function review(Season $season): array
     {
@@ -145,6 +145,8 @@ final class SeasonSettlement
             'mined' => $chain->mined(),
             'voided' => array_sum(array_column($rows, 'voided')),
             'payout' => array_sum(array_column($rows, 'payout')),
+            // What no block mined: it stays with the league (`season-chain-v2`: rounding, unassigned shares, closed keys, the season's end).
+            'rest' => $season->supply - $chain->mined(),
             'voids' => $season->blockVoids()->with('voidedBy')->orderBy('height')->get(),
             'mismatch' => $this->mismatch($season, $chain),
         ];
@@ -152,16 +154,23 @@ final class SeasonSettlement
 
     /**
      * Where the replay differs from the stored chain (a height the replay
-     * gives another result, or does not give at all), or null. A settlement
-     * on such a chain would pay what nobody can check.
+     * gives another result, another era or another reward, or does not give
+     * at all), or null. A settlement on such a chain would pay what nobody
+     * can check. The era and the rewards are compared because a key's era
+     * follows from every block before it (`season-chain-v2`): a stored
+     * reward the replay does not reproduce is not the chain's.
      */
     public function mismatch(Season $season, BlockChain $chain): ?string
     {
-        $stored = $season->attestations()->whereNotNull('height')->orderBy('height')->pluck('label', 'height')->all();
+        $stored = [];
         $replayed = [];
 
+        foreach ($season->attestations()->whereNotNull('height')->orderBy('height')->get(['height', 'label', 'era', 'reward_per_player', 'reward']) as $row) {
+            $stored[(int) $row->height] = [$row->label, (int) $row->era, (int) $row->reward_per_player, (int) $row->reward];
+        }
+
         foreach ($chain->blocks() as $block) {
-            $replayed[$block->height] = $block->candidate->label;
+            $replayed[$block->height] = [$block->candidate->label, $block->era, $block->rewardPerPlayer, $block->reward];
         }
 
         foreach ($stored + $replayed as $height => $label) {

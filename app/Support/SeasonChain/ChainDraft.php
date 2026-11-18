@@ -30,7 +30,7 @@ use Carbon\CarbonImmutable;
  * later season takes them from the board's plan (SeasonPlans, P38), which
  * announces them.
  *
- * @phpstan-type Chain array{block0_at: int|null, weeks: int, supply: int, subsidy: int, halving_days: int, claim_days: int, trust_minimum: int, message: string|null, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}
+ * @phpstan-type Chain array{block0_at: int|null, weeks: int, supply: int, subsidy: int, eras: int, claim_days: int, trust_minimum: int, message: string|null, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}
  */
 final class ChainDraft
 {
@@ -44,7 +44,7 @@ final class ChainDraft
     public const LIMITS = [
         'supply' => [1_000, 100_000_000],
         'subsidy' => [1, 1_000_000],
-        'halving_days' => [1, 182],
+        'eras' => [1, SeasonParameters::MAX_ERAS],
         'claim_days' => [1, 365],
         'trust_minimum' => [0, 100],
         'weight' => [1, 10_000],
@@ -68,7 +68,7 @@ final class ChainDraft
      */
     public static function defaults(): array
     {
-        /** @var array{supply: int, subsidy: int, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, weeks: int, halving_days: int, claim_days: int} $chain */
+        /** @var array{supply: int, subsidy: int, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, weeks: int, eras: int, claim_days: int} $chain */
         $chain = config('season.chain');
         $registry = app(GameRegistry::class);
         $off = fn (string $game): bool => (in_array($game, BoardGame::RESERVED_SLUGS, true) && ! $registry->isBoard($game))
@@ -86,7 +86,7 @@ final class ChainDraft
             'weeks' => (int) $chain['weeks'],
             'supply' => (int) $chain['supply'],
             'subsidy' => (int) $chain['subsidy'],
-            'halving_days' => (int) $chain['halving_days'],
+            'eras' => (int) $chain['eras'],
             'claim_days' => (int) $chain['claim_days'],
             'trust_minimum' => (int) config('season.trust_minimum'),
             'message' => null,
@@ -119,8 +119,9 @@ final class ChainDraft
 
         // The share groups are config's, never the board's: fromInput() always writes them, so a
         // draft saved before a group existed (the board games, P6) gets it too, without a weight.
+        // Only the fields of today's draft: one saved under the calendar rule still carries its days per era.
         /** @var Chain|null */
-        return is_array($chain) ? [...$defaults, ...$chain, 'groups' => $defaults['groups']] : null;
+        return is_array($chain) ? [...$defaults, ...array_intersect_key($chain, $defaults), 'groups' => $defaults['groups']] : null;
     }
 
     /**
@@ -414,10 +415,11 @@ final class ChainDraft
     /**
      * The draft from the form. Refuses (SeasonReleaseRefused) what Block 0
      * must never sign: a value out of range, a game that mines without a
-     * share and a daily limit, shares above 100 % in total, eras longer than
-     * the season. Keys the form did not come from are ignored.
+     * share and a daily limit, shares above 100 % in total, a weight that
+     * pays nothing in the last era or a block larger than what the last era
+     * holds (eraRefusal()). Keys the form did not come from are ignored.
      *
-     * @param  array{block0_at: CarbonImmutable|null, weeks: string, supply: string, subsidy: string, halving_days: string, claim_days: string, trust_minimum: string, message: string, weights: array<string, string>, shares: array<string, string>, daily: array<string, string>, pair_day: string, pair_season: string, subtree: string, moves: string}  $input
+     * @param  array{block0_at: CarbonImmutable|null, weeks: string, supply: string, subsidy: string, eras: string, claim_days: string, trust_minimum: string, message: string, weights: array<string, string>, shares: array<string, string>, daily: array<string, string>, pair_day: string, pair_season: string, subtree: string, moves: string}  $input
      * @return Chain
      *
      * @throws SeasonReleaseRefused
@@ -507,7 +509,7 @@ final class ChainDraft
             'weeks' => (int) $weeks,
             'supply' => $number($input['supply'], 'supply', __('Supply'), true),
             'subsidy' => $number($input['subsidy'], 'subsidy', __('Base subsidy'), true),
-            'halving_days' => $number($input['halving_days'], 'halving_days', __('Days per era')),
+            'eras' => $number($input['eras'], 'eras', __('Eras')),
             'claim_days' => $number($input['claim_days'], 'claim_days', __('Claim window in days')),
             'trust_minimum' => $number($input['trust_minimum'], 'trust_minimum', __('Trust rank for rated play')),
             'message' => $message === '' ? null : $message,
@@ -520,11 +522,58 @@ final class ChainDraft
             'moves' => $number($input['moves'], 'moves', __('Minimum moves (chess, board games)')),
         ];
 
-        if ($chain['halving_days'] > self::weeks($chain) * 7) {
-            throw new SeasonReleaseRefused(__('An era of :days days is longer than the season of :weeks weeks.', ['days' => $chain['halving_days'], 'weeks' => self::weeks($chain)]));
+        $refusal = self::eraRefusal($chain['supply'], $chain['subsidy'], $chain['eras'], $weights, $shares, $chain['groups']);
+
+        if ($refusal !== null) {
+            throw new SeasonReleaseRefused($refusal);
         }
 
         return $chain;
+    }
+
+    /**
+     * Why these values cannot halve `eras` times, or null (`season-chain-v2`):
+     * every game and mode that mines pays at least 1 sat per winner in the
+     * last era, and its largest block there (a full team of winners) is at
+     * most what the last era of its share key holds, floor(pot / 2^eras).
+     * Then a block that crosses the last bound still ends at or below the
+     * pot. The draft, the release and every weight change of a live season
+     * are held to it.
+     *
+     * @param  array<string, int>  $weights  `<game>/<mode>` => thousandths
+     * @param  array<string, int>  $shares  share key => percent
+     * @param  array<string, list<string>>  $groups
+     */
+    public static function eraRefusal(int $supply, int $subsidy, int $eras, array $weights, array $shares, array $groups): ?string
+    {
+        $t0 = CarbonImmutable::createFromTimestamp(0);
+        $season = new SeasonParameters('draft', $t0, $t0->addSecond(), $supply, $subsidy, $eras, new ConsensusParameters($weights, $shares, groups: $groups));
+        $registry = app(GameRegistry::class);
+
+        foreach ($weights as $key => $milli) {
+            if ($milli <= 0) {
+                continue;
+            }
+
+            [$game, $mode] = array_pad(explode('/', (string) $key, 2), 2, '');
+            $perPlayer = $season->rewardPerPlayer($milli, $eras);
+
+            if ($perPlayer < 1) {
+                return __(':key would pay nothing in era :era. Raise its weight or the base subsidy, or set fewer eras.', ['key' => ChainOverview::keyLabel((string) $key), 'era' => $eras]);
+            }
+
+            $shareKey = $season->genesis->shareKey($game);
+            $block = $perPlayer * ($registry->mode($game, $mode)->teamSize ?? 1);
+            $room = $season->pot($shareKey) - $season->bound($shareKey, $eras);
+
+            if ($block > $room) {
+                return __('A block of :key pays :reward sats in era :era, but that era holds only :room sats for :game. Raise the supply or the share, or lower the weight or the base subsidy.', [
+                    'key' => ChainOverview::keyLabel((string) $key), 'reward' => $block, 'era' => $eras, 'room' => $room, 'game' => self::shareLabel($shareKey),
+                ]);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -542,7 +591,7 @@ final class ChainDraft
         $sum = array_sum($chain['shares']);
 
         if ($sum < 100) {
-            $warnings[] = __('The shares add up to :sum %: :rest % of every era budget cannot be mined.', ['sum' => $sum, 'rest' => 100 - $sum]);
+            $warnings[] = __('The shares add up to :sum %: :rest % of the supply belong to no game and cannot be mined.', ['sum' => $sum, 'rest' => 100 - $sum]);
         }
 
         foreach (array_keys($chain['weights']) as $key) {

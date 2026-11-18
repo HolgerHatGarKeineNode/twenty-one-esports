@@ -47,7 +47,7 @@ use Throwable;
  * The season chain of the app (P7c): every rated result inside a live chain
  * season becomes a League Attestation (`2154`), signed by the league key, in
  * attestation order. A result with a winner is a block candidate; the
- * consensus rules of `season-chain-v1` (ConsensusRules) decide, with the
+ * consensus rules of `season-chain-v2` (ConsensusRules) decide, with the
  * parameters in force at its attestation, whether it mines. A block carries
  * `["block", "<height>", "<previous block id>"]`, a win that does not mine
  * `["block", "", "<tip id>"]` and the rule that rejected it is stored.
@@ -1320,10 +1320,12 @@ final class SeasonChains
      * force for every attestation from `effective` on, never before (NIP
      * "Parameter changes"; the core refuses an `effective` at or before the
      * latest attestation). Only the parameters given change; the rest stay.
-     * A change may add a game or mode that did not mine, with its weight,
-     * share and daily limit (validateChanges()).
+     * A change may add a mode, or a game whose share key has a share in the
+     * genesis, with its weight and daily limit (validateChanges()). The
+     * shares are fixed at Block 0 (`season-chain-v2`): a change that names
+     * one is refused.
      *
-     * @param  array{weights?: array<string, int>, shares?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}|null, subtree?: int|null, moves?: int|null}  $changes
+     * @param  array{weights?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}|null, subtree?: int|null, moves?: int|null}  $changes
      *
      * @throws SeasonReleaseRefused
      */
@@ -1339,8 +1341,8 @@ final class SeasonChains
             throw new SeasonReleaseRefused(__('Say why you change it, up to :max characters. It is shown in the public change log.', ['max' => SeasonRelease::MESSAGE_MAX]));
         }
 
-        if (array_diff(array_keys($changes), ['weights', 'shares', 'daily', 'pairlimit', 'subtree', 'moves']) !== []) {
-            throw new SeasonReleaseRefused(__('Only weights, share caps, daily limits, pairing limits, the trust circle and the minimum moves can change during a season.'));
+        if (array_diff(array_keys($changes), ['weights', 'daily', 'pairlimit', 'subtree', 'moves']) !== []) {
+            throw new SeasonReleaseRefused(__('Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.'));
         }
 
         $changes = array_filter($changes, fn (mixed $value): bool => $value !== null && $value !== []);
@@ -1358,7 +1360,7 @@ final class SeasonChains
             $this->validateChanges($season, $changes);
 
             $change = new ParameterChange(CarbonImmutable::createFromTimestamp(now()->getTimestamp()), $effective, $admin->pubkey, $reason,
-                $changes['weights'] ?? [], $changes['shares'] ?? [], $changes['daily'] ?? [], $changes['pairlimit'] ?? null, $changes['subtree'] ?? null, $changes['moves'] ?? null);
+                $changes['weights'] ?? [], $changes['daily'] ?? [], $changes['pairlimit'] ?? null, $changes['subtree'] ?? null, $changes['moves'] ?? null);
 
             try {
                 $this->chain($season)->changeParameters($change);
@@ -1377,10 +1379,6 @@ final class SeasonChains
 
             foreach ($changes['weights'] ?? [] as $key => $milli) {
                 $tags[] = ['weight', (string) $key, SeasonRelease::factor($milli)];
-            }
-
-            foreach ($changes['shares'] ?? [] as $game => $percent) {
-                $tags[] = ['share', (string) $game, (string) $percent];
             }
 
             foreach ($changes['daily'] ?? [] as $game => $blocks) {
@@ -1429,9 +1427,10 @@ final class SeasonChains
      * weight may be 0 to stop a game), for a game and mode or a share key
      * of the registry. A change may add a game or mode (NIP rev. 9.5: a
      * change "adds or replaces" a row): whatever mines after it needs a
-     * share and a daily limit for its share key, so a new game brings its
-     * weight, share and daily limit in the same change. The shares after it
-     * add up to at most 100 %.
+     * daily limit for its share key, and a share in the genesis: the shares
+     * are fixed at Block 0 (`season-chain-v2`), so a game whose share key
+     * has none waits for the next season. The weights after it still halve
+     * to the last era (ChainDraft::eraRefusal()).
      *
      * @param  array<string, mixed>  $changes
      *
@@ -1451,10 +1450,6 @@ final class SeasonChains
             $ok = $ok && $registry->mode($game, $mode) !== null && $in($milli, 'weight', 0);
         }
 
-        foreach ((array) ($changes['shares'] ?? []) as $key => $percent) {
-            $ok = $ok && $isShareKey($key) && $in($percent, 'share');
-        }
-
         foreach ((array) ($changes['daily'] ?? []) as $key => $blocks) {
             $ok = $ok && $isShareKey($key) && $in($blocks, 'daily');
         }
@@ -1471,22 +1466,30 @@ final class SeasonChains
         }
 
         $weights = array_replace($current->weights, (array) ($changes['weights'] ?? []));
-        $shares = array_replace($current->shares, (array) ($changes['shares'] ?? []));
         $daily = array_replace($current->daily, (array) ($changes['daily'] ?? []));
 
         foreach ($weights as $key => $milli) {
             $shareKey = $current->shareKey(explode('/', (string) $key, 2)[0]);
 
-            if ($milli > 0 && (! isset($shares[$shareKey]) || ! isset($daily[$shareKey]))) {
+            if ($milli > 0 && ! isset($current->shares[$shareKey])) {
                 // The board games' share group is plural: its own sentence.
                 throw new SeasonReleaseRefused($shareKey === 'board-games'
-                    ? __('Board games mine, so they need a share and a daily limit in the same change.')
-                    : __(':game mines, so it needs a share and a daily limit in the same change.', ['game' => ChainDraft::shareLabel($shareKey)]));
+                    ? __('Board games have no share in this season. The shares are fixed at Block 0, so they can mine from the next season on.')
+                    : __(':game has no share in this season. The shares are fixed at Block 0, so it can mine from the next season on.', ['game' => ChainDraft::shareLabel($shareKey)]));
+            }
+
+            if ($milli > 0 && ! isset($daily[$shareKey])) {
+                // The board games' share group is plural: its own sentence.
+                throw new SeasonReleaseRefused($shareKey === 'board-games'
+                    ? __('Board games mine, so they need a daily limit in the same change.')
+                    : __(':game mines, so it needs a daily limit in the same change.', ['game' => ChainDraft::shareLabel($shareKey)]));
             }
         }
 
-        if (array_sum($shares) > 100) {
-            throw new SeasonReleaseRefused(__('The shares add up to :sum %. Together they can be at most 100 %.', ['sum' => array_sum($shares)]));
+        $refusal = ChainDraft::eraRefusal($season->supply, $season->subsidy, $season->eras, $weights, $current->shares, $current->groups);
+
+        if ($refusal !== null) {
+            throw new SeasonReleaseRefused($refusal);
         }
     }
 

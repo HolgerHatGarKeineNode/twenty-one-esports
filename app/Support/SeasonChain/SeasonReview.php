@@ -10,7 +10,9 @@ use App\Support\Rating\RatingSettings;
 
 /**
  * The review of an ended season on AdminSeason (P35): the champion of every
- * ladder and what the chain mined. The settlement (voids, who gets how
+ * ladder and what the chain mined. `rest` is what the season did not mine,
+ * supply - mined: the pots nobody emptied, what the rounding lost and the
+ * percent no game had (`season-chain-v2`). The settlement (voids, who gets how
  * much, the payouts) is SeasonSettlement (P37).
  *
  * A champion is the first standing of the ladder's final version (as
@@ -28,7 +30,7 @@ final class SeasonReview
     }
 
     /**
-     * @return array{champions: list<array{ladder: string, name: string, rating: int, results: int, tier: string}>, blocks: int, mined: int, remaining: int, supply: int, rejected: int}
+     * @return array{champions: list<array{ladder: string, name: string, rating: int, results: int, tier: string}>, blocks: int, mined: int, remaining: int, rest: int, supply: int, rejected: int}
      */
     public function of(Season $season): array
     {
@@ -66,6 +68,7 @@ final class SeasonReview
             'blocks' => $season->attestations()->whereNotNull('height')->count(),
             'mined' => $chain->mined(),
             'remaining' => $chain->remaining(),
+            'rest' => $season->supply - $chain->mined(),
             'supply' => $season->supply,
             'rejected' => $season->attestations()->whereNotNull('candidate')->whereNull('height')->count(),
         ];

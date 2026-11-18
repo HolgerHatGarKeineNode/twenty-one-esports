@@ -137,7 +137,7 @@ final class ChainStamps
             'player-daily-limit' => self::line('daily limit'),
             'same-subtree' => self::line('same trust circle'),
             'pairing-season-limit' => self::line('pairing limit, season'),
-            'share-cap' => self::line('era share used up'),
+            'key-closed' => self::line('season share mined out'),
             'window-outside-season' => self::line('window before Block 0'),
             'too-few-entrants' => self::line('too few Trusted players'),
             'unverified' => self::line('value not verified'),

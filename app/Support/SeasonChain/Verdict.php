@@ -10,7 +10,7 @@ namespace App\Support\SeasonChain;
 final class Verdict
 {
     /**
-     * @param  ?string  $reason  a stable code, e.g. `share-cap`; null when it mines
+     * @param  ?string  $reason  a stable code, e.g. `key-closed`; null when it mines
      * @param  ?string  $subject  who or what the reason names (a player, a clan, an anchor)
      */
     public function __construct(

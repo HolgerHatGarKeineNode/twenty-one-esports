@@ -9,14 +9,15 @@ use Carbon\CarbonImmutable;
  * The AdminSeason estimator (SEASON-CHAIN.md, "Admin: season settings with
  * estimator", decision 12): from a forecast of valid blocks per week per
  * game and mode it simulates the rest of the season in steps of one day,
- * with the share cap per game and era, and reports when 50 / 75 / 87.5 / 94 %
- * of the supply are mined, what is mined at the season end, the payout per
- * week, the rewarded wins the caps allow, and warnings.
+ * each share key in the era its mined amount puts it in (`season-chain-v2`),
+ * and reports when 50 / 75 / 87.5 / 94 % of the supply are mined, what is
+ * mined at the season end, the payout per week, the rewarded wins each era
+ * of a key holds, and warnings.
  *
- * The arithmetic follows the ledger generator's estimator
- * (ledger-src/chain.py, `estimate`) step by step in IEEE 754 doubles, so the
- * figures match it exactly; figures it rounds are rounded half to even, as
- * Python's round() does.
+ * A step mines at most up to the bound of the key's era; the one block that
+ * crosses a bound is not forecast. Figures are rounded half to even. The
+ * ledger generator's estimator (ledger-src/chain.py, `estimate`) still
+ * follows the calendar rule and no longer matches.
  */
 final class Estimator
 {
@@ -115,14 +116,15 @@ final class Estimator
     {
         $parameters = $season->inForceAt($start);
         $eras = $season->eras();
-        $eraWeeks = $season->halvingSeconds / self::Week;
+        $seasonWeeks = ($season->endsAt->getTimestamp() - $season->genesisAt->getTimestamp()) / self::Week;
         // Per share key: a share group (both EA Sports FC editions) has one cap for all its games.
         $games = array_values(array_unique(array_merge(array_map($parameters->shareKey(...), array_column($streams, 'game')), array_keys($parameters->shares))));
         sort($games);
         usort($streams, fn (array $a, array $b): int => $a['weight_key'] <=> $b['weight_key']);
 
         $blockReward = fn (array $stream, int $era): float|int => $season->rewardPerPlayer($parameters->weightFor($stream['weight_key']), $era) * $stream['winners'];
-        $cap = fn (string $game, int $era): int => $season->shareCap($parameters->shareFor($game), $era);
+        // What era n of a share key holds (`season-chain-v2`): the key halves by what it mined, never by the week.
+        $cap = fn (string $game, int $era): int => $season->eraSize($parameters->shareKey($game), $era);
 
         $minedTotal = $mined;
         $byGameAndEra = $minedByGameAndEra;
@@ -131,10 +133,16 @@ final class Estimator
         $week = $this->weeksSince($season, $start);
         $startWeek = $week;
 
-        while ($week < $eras * $eraWeeks - 1e-9) {
-            $era = (int) floor($week / $eraWeeks) + 1;
-
+        while ($week < $seasonWeeks - 1e-9) {
             foreach ($games as $game) {
+                $minedOfGame = array_sum($byGameAndEra[$game] ?? []);
+                $era = $season->eraOf($game, (int) floor($minedOfGame));
+
+                // A closed key mines nothing more.
+                if ($era === null) {
+                    continue;
+                }
+
                 $want = 0;
                 foreach ($streams as $stream) {
                     if ($parameters->shareKey($stream['game']) === $game) {
@@ -142,7 +150,8 @@ final class Estimator
                     }
                 }
                 $want *= $step;
-                $room = $cap($game, $era) - ($byGameAndEra[$game][$era] ?? 0);
+                // Up to the era's bound; the block that crosses it is not forecast.
+                $room = $season->bound($game, $era) - $minedOfGame;
                 $got = max(0, min($want, $room));
                 $byGameAndEra[$game][$era] = ($byGameAndEra[$game][$era] ?? 0) + $got;
                 $minedTotal += $got;
@@ -172,7 +181,7 @@ final class Estimator
             foreach ($games as $game) {
                 $minedInEra[$game] = self::roundHalfEven($byGameAndEra[$game][$era] ?? 0);
             }
-            $perEra[] = ['era' => $era, 'budget' => $season->eraBudget($era), 'mined' => $minedInEra];
+            $perEra[] = ['era' => $era, 'budget' => array_sum(array_map(fn (string $game): int => $cap($game, $era), $games)), 'mined' => $minedInEra];
 
             $payout = 0;
             $wins = [];
@@ -185,7 +194,6 @@ final class Estimator
             $winsPerEra[] = $wins;
         }
 
-        $seasonWeeks = ($season->endsAt->getTimestamp() - $season->genesisAt->getTimestamp()) / self::Week;
         $highest = $this->milestones === [] ? null : (string) max($this->milestones);
         $warnings = [];
         if ($seasonWeeks < $this->minWeeks) {

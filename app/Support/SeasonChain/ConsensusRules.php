@@ -5,11 +5,17 @@ namespace App\Support\SeasonChain;
 use Carbon\CarbonImmutable;
 
 /**
- * `season-chain-v1` (docs/nips/esports.md, "Consensus rules"): whether a
+ * `season-chain-v2` (docs/nips/esports.md, "Consensus rules"): whether a
  * candidate mines, checked against the chain before it and with the
  * parameters in force at its attestation (SeasonParameters::inForceAt()).
  * The reason a win does not mine is the first rule it fails, in the order of
  * ConsensusRule::cases(): 0, 1, 2, 3, 4, 5, 7, 8, 9.
+ *
+ * The era of a candidate is its share key's (SeasonParameters::eraOf()),
+ * read from what the key mined before it; the block pays that era's whole
+ * reward and may cross the era's bound, the last one included. Rule 9: a
+ * key whose last era is mined out is closed (`key-closed`), and no block
+ * takes a key above its pot. The calendar moves no reward.
  *
  * Every missing input fails closed: a player without a pinned trust rank is
  * below the minimum, a chess result without a move count is not a real game,
@@ -52,8 +58,12 @@ final class ConsensusRules
             return new Verdict(ConsensusRule::Season, 'outside-season', 0, 0, 0);
         }
 
-        $era = $season->eraAt($candidate->attestedAt);
-        $perPlayer = $season->rewardPerPlayer($parameters->weightFor($candidate->weightKey), $era);
+        $shareKey = $parameters->shareKey($candidate->game);
+        $minedBefore = $chain->minedOf($shareKey);
+        $open = $season->eraOf($shareKey, $minedBefore);
+        // A closed key pays nothing; its verdict names the last era.
+        $era = $open ?? $season->eras();
+        $perPlayer = $open === null ? 0 : $season->rewardPerPlayer($parameters->weightFor($candidate->weightKey), $era);
         $reward = $perPlayer * count($candidate->winners);
 
         foreach (ConsensusRule::cases() as $rule) {
@@ -69,8 +79,7 @@ final class ConsensusRules
                 ConsensusRule::DailyLimit => $this->dailyLimit($candidate, $parameters, $chain),
                 ConsensusRule::SameSubtree => $candidate->isSolo() ? null : $this->sameSubtree($candidate, $parameters->subtree),
                 ConsensusRule::PairingPerSeason => ! $candidate->isSolo() && $chain->pairingBlocks($candidate) >= $parameters->pairLimitPerSeason ? ['pairing-season-limit', null] : null,
-                ConsensusRule::ShareCap => $chain->minedIn($parameters->shareKey($candidate->game), $era) + $reward > $season->shareCap($parameters->shareFor($candidate->game), $era)
-                    ? ['share-cap', $parameters->shareKey($candidate->game)] : null,
+                ConsensusRule::KeyClosed => $open === null || $minedBefore + $reward > $season->pot($shareKey) ? ['key-closed', $shareKey] : null,
             };
 
             if ($failure !== null) {

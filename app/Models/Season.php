@@ -26,7 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string $league_pubkey
  * @property int $supply
  * @property int $subsidy
- * @property int $halving_seconds
+ * @property int $eras the eras of every share key (`season-chain-v2`)
  * @property int $claim_seconds
  * @property int $minimum_trust
  * @property array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, groups?: array<string, list<string>>, solo?: array{0: int, 1: int, 2: int}} $parameters the genesis; `groups` from P43 on (NIP rev. 9.5), `solo` [entrants, window wins, review seconds] only when a score game mines in it (NIP rev. 9.18)
@@ -50,7 +50,7 @@ use Illuminate\Support\Carbon;
  * @property-read Season|null $previousSeason
  */
 #[Fillable([
-    'slug', 'previous_season_id', 'reset_factor_milli', 'league_pubkey', 'supply', 'subsidy', 'halving_seconds', 'claim_seconds', 'minimum_trust', 'parameters', 'rating_parameters',
+    'slug', 'previous_season_id', 'reset_factor_milli', 'league_pubkey', 'supply', 'subsidy', 'eras', 'claim_seconds', 'minimum_trust', 'parameters', 'rating_parameters',
     'genesis_message', 'digest', 'genesis_at', 'ends_at', 'genesis_event_id', 'release_event_id', 'admin_list_event_id',
     'announcement_event_id', 'released_by_id', 'released_by_pubkey',
 ])]
@@ -77,7 +77,7 @@ class Season extends Model
             'reset_factor_milli' => 'integer',
             'supply' => 'integer',
             'subsidy' => 'integer',
-            'halving_seconds' => 'integer',
+            'eras' => 'integer',
             'claim_seconds' => 'integer',
             'minimum_trust' => 'integer',
             'parameters' => 'array',
@@ -170,7 +170,7 @@ class Season extends Model
             CarbonImmutable::instance($this->ends_at),
             $this->supply,
             $this->subsidy,
-            $this->halving_seconds,
+            $this->eras,
             new ConsensusParameters($p['weights'], $p['shares'], $p['daily'], $p['pairlimit'][0], $p['pairlimit'][1], $p['subtree'], $p['moves'], $p['groups'] ?? [],
                 ...(isset($p['solo']) ? array_map(intval(...), $p['solo']) : [])),
             $this->claim_seconds,

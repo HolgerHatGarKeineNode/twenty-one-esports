@@ -52,7 +52,7 @@
                 @foreach ($season['eras'] as $era)
                     <tr>
                         <td>{{ $era['era'] }}</td>
-                        <td class="tabular-nums">{{ $era['from']->setTimezone($zone)->locale(app()->getLocale())->isoFormat(app()->getLocale() === 'de' ? 'dd D.M.' : 'ddd D MMM') }}</td>
+                        <td class="tabular-nums">{{ $era['from'] === null ? '–' : $era['from']->setTimezone($zone)->locale(app()->getLocale())->isoFormat(app()->getLocale() === 'de' ? 'dd D.M.' : 'ddd D MMM') }}</td>
                         <td class="is-r tabular-nums">{{ HomeBoard::sats($era['sats']) }}</td>
                     </tr>
                 @endforeach

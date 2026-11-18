@@ -30,7 +30,7 @@ class SeasonFactory extends Factory
             'league_pubkey' => bin2hex(random_bytes(32)),
             'supply' => $chain['supply'],
             'subsidy' => $chain['subsidy'],
-            'halving_seconds' => $chain['halving_days'] * 86400,
+            'eras' => $chain['eras'],
             'claim_seconds' => $chain['claim_days'] * 86400,
             'minimum_trust' => $chain['trust_minimum'],
             'parameters' => [

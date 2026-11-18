@@ -287,7 +287,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     [__('Season'), trans_choice(':count week|:count weeks', (int) round($chain['season']->genesis_at->diffInDays($chain['season']->ends_at) / 7)), __(':from to :to', ['from' => $date($chain['season']->genesis_at, 'j M'), 'to' => $date($chain['season']->ends_at, 'j M Y')])],
                 ],
                 default => [
-                    [__('Era'), '0', __('eras of :days days', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
+                    [__('Era'), '0', $chain['parameters']->eras().' '.__('Eras')],
                     // The board's saved chain draft only, as home and /rules: no server default is announced.
                     PreSeason::potSats() === null
                         ? [__('Supply'), '–', __('not announced yet')]
@@ -353,7 +353,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                                     </span>
                                 @endif
                             </td>
-                            <td class="text-btc tabular-nums">{{ $date($row['from'], 'D j.n.') }}</td>
+                            <td class="text-btc tabular-nums">{{ $row['from'] === null ? '–' : $date($row['from'], 'D j.n.') }}</td>
                             @foreach ($row['rewards'] as $key => $reward)
                                 <td @class(['is-r tabular-nums', 'text-ink-3' => ! ChainOverview::mines((string) $key)])>{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                             @endforeach

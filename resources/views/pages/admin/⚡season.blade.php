@@ -323,7 +323,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 'weeks' => $text('weeks'),
                 'supply' => $text('supply'),
                 'subsidy' => $text('subsidy'),
-                'halving_days' => $text('halving_days'),
+                'eras' => $text('eras'),
                 'claim_days' => $text('claim_days'),
                 'trust_minimum' => $text('trust_minimum'),
                 'message' => $text('message'),
@@ -531,7 +531,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             'chain.weeks' => __('Length in weeks'),
             'chain.supply' => __('Supply in sats'),
             'chain.subsidy' => __('Base subsidy in sats'),
-            'chain.halving_days' => __('Days per era'),
+            'chain.eras' => __('Eras'),
             'chain.claim_days' => __('Claim window in days'),
             'chain.trust_minimum' => __('Trust rank for rated play'),
             'chain.message' => __('Genesis message'),
@@ -830,7 +830,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             'weeks' => (string) $chain['weeks'],
             'supply' => (string) $chain['supply'],
             'subsidy' => (string) $chain['subsidy'],
-            'halving_days' => (string) $chain['halving_days'],
+            'eras' => (string) $chain['eras'],
             'claim_days' => (string) $chain['claim_days'],
             'trust_minimum' => (string) $chain['trust_minimum'],
             'message' => (string) $chain['message'],
@@ -897,7 +897,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 [__('Tip'), __('none'), __('waiting for Block 0')],
                 [__('Supply'), $sats($chain['supply']), __('the most it pays out, after the season')],
                 [__('Base subsidy'), $sats($chain['parameters']->subsidy), __('per winning player at weight 1')],
-                [__('Eras'), (string) $chain['parameters']->eras(), __(':days days each', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
+                [__('Eras'), (string) $chain['parameters']->eras(), ''],
                 [__('Planned Block 0'), $plannedBlock0 ? $date($plannedBlock0, 'D j M, H:i') : __('not set'), __('the countdown on the home page')],
             ] as [$label, $value, $sub])
                 <div @class(['flex min-w-0 flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring', 'col-span-2 lg:col-span-1' => $loop->last])>
@@ -949,9 +949,9 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         <input type="text" inputmode="numeric" wire:model="draft.subsidy" class="{{ $input }}" data-test="draft-subsidy">
                         <span class="text-ink-3">{{ __(':range; per winning player at weight 1 in era 1, halved every era', ['range' => $range('subsidy')]) }}</span>
                     </label>
-                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Days per era') }}
-                        <input type="text" inputmode="numeric" wire:model="draft.halving_days" class="{{ $input }}" data-test="draft-halving">
-                        <span class="text-ink-3">{{ __(':range; the halving: rewards and era budget halve after each era, no longer than the season', ['range' => $range('halving_days')]) }}</span>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Eras') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.eras" class="{{ $input }}" data-test="draft-eras">
+                        <span class="text-ink-3">{{ __(':range; the halving: a game\'s reward halves each time it has mined half of what its share still holds', ['range' => $range('eras')]) }}</span>
                     </label>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Claim window in days') }}
                         <input type="text" inputmode="numeric" wire:model="draft.claim_days" class="{{ $input }}" data-test="draft-claim">
@@ -1171,7 +1171,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     @foreach ($chain['schedule'] as $row)
                         <tr @class(['border-b border-hairline last:border-0', 'text-btc-hi' => $row['current']])>
                             <td class="py-2 pr-3 font-bold">{{ $row['era'] }}</td>
-                            <td class="py-2 pr-3 whitespace-nowrap">{{ $date($row['from'], 'D j M') }}</td>
+                            <td class="py-2 pr-3 whitespace-nowrap">{{ $row['from'] === null ? '–' : $date($row['from'], 'D j M') }}</td>
                             <td class="py-2 pr-3 text-right">{{ $sats($row['budget']) }}</td>
                             @foreach ($games as $game)
                                 <td class="py-2 pr-3 text-right">{{ $sats($row['caps'][$game] ?? 0) }}</td>
@@ -1251,7 +1251,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         @foreach ([
                             [__('Supply, the most it pays out'), $sats($chain['supply']).' sats'],
                             [__('Base subsidy'), $sats($chain['parameters']->subsidy).' sats'],
-                            [__('Eras'), __(':eras × :days days', ['eras' => $chain['parameters']->eras(), 'days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
+                            [__('Eras'), (string) $chain['parameters']->eras()],
                             [__('Season end'), $date(CarbonImmutable::createFromTimestamp($this->endsAt))],
                             [__('Mined at the season end'), $sats($estimate['end_mined']).' ('.$estimate['end_mined_percent'].' %)'],
                         ] as [$term, $value])

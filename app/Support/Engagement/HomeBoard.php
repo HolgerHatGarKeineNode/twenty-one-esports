@@ -397,7 +397,7 @@ final class HomeBoard
             foreach (array_slice($chain['schedule'], 0, 3) as $row) {
                 // A timestamp, not a Carbon: the cache unserializes no objects (config cache.serializable_classes = false),
                 // a cached CarbonImmutable came back as __PHP_Incomplete_Class and took home down (500) from the second request on.
-                $eras[] = ['era' => (int) $row['era'], 'from' => CarbonImmutable::instance($row['from'])->getTimestamp(), 'sats' => (int) ($payKey === null ? 0 : ($row['rewards'][$payKey] ?? 0))];
+                $eras[] = ['era' => (int) $row['era'], 'from' => $row['from'] === null ? null : CarbonImmutable::instance($row['from'])->getTimestamp(), 'sats' => (int) ($payKey === null ? 0 : ($row['rewards'][$payKey] ?? 0))];
             }
 
             return [
@@ -419,7 +419,7 @@ final class HomeBoard
             $card = $read();
         }
 
-        $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
+        $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => $era['from'] === null ? null : CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
         // A card cached before `pays` existed (at most a minute after a deploy): era 1, as that card said.
         $card['pays'] ??= (int) ($card['eras'][0]['sats'] ?? 0);
 

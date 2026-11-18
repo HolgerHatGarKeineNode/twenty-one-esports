@@ -4,7 +4,8 @@ namespace App\Support\SeasonChain;
 
 /**
  * The counters of the chain that rules 0, 4, 5, 8 and 9 read: everything
- * mined so far, per share key (the game, or its share group) and era, per
+ * mined so far, per share key (the game, or its share group: what decides
+ * the key's era, `season-chain-v2`) and per share key and era, per
  * pairing (day and season) and per winning player, share key and UTC day,
  * and the blocks of score windows per winning player and share key (solo
  * rule 8; a score window's pairing is the window, solo rule 4). A table of 2
@@ -40,6 +41,12 @@ final class ChainState
     public function minedByGameAndEra(): array
     {
         return $this->minedByGameAndEra;
+    }
+
+    /** Every sat the share key mined so far, voided blocks included: what its era is read from. */
+    public function minedOf(string $shareKey): int
+    {
+        return array_sum($this->minedByGameAndEra[$shareKey] ?? []);
     }
 
     public function minedIn(string $shareKey, int $era): int

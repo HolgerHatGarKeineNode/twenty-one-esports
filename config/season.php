@@ -129,11 +129,14 @@ return [
     | (`board-games`, plan "Mühle und Dame", P6; user decision 2026-09-29).
     | `pairlimit` is [per UTC day, per season]; `subtree` 101 switches rule 7
     | off; `moves` counts for chess and the board games. The length is in
-    | weeks, eras last `halving_days`.
+    | weeks. `eras`: every share key halves its reward `eras` times by the
+    | amount it mined (`season-chain-v2`), never by the calendar: its pot is
+    | its share of the supply, era n ends once the key mined its pot minus
+    | pot / 2^n, and after the last era the key is closed.
     |
     | Chess, the board games and Hyperbitcoinization mine from Block 0, and
     | nothing else (user decision 2026-11-18): chess at 50 %, the board games
-    | at 30 % and Hyperbitcoinization at 20 % of every era. Rapid is at 1.5x,
+    | at 30 % and Hyperbitcoinization at 20 % of the supply. Rapid is at 1.5x,
     | as its game lasts about 1.5x a blitz game, correspondence at twice
     | blitz, as chess daily (user decision 2026-10-11). Hyperbitcoinization
     | mines one block per rated match for its winner alone, a free-for-all or
@@ -142,8 +145,8 @@ return [
     | is left out of the draft (ChainDraft::defaults()): a board game's
     | weight, with all board games off their share and daily limit too, and
     | with Hyperbitcoinization off (`ESPORTS_HYPER`) its weights, share and
-    | daily limit. The draft then warns about the share of every era that
-    | cannot be mined: 20 % without Hyperbitcoinization, 30 % without the
+    | daily limit. The draft then warns about the share of the supply that
+    | no game can mine: 20 % without Hyperbitcoinization, 30 % without the
     | board games, 50 % without both.
     |
     | Rocket League and both EA Sports FC editions do not mine at Block 0
@@ -270,7 +273,7 @@ return [
         'subtree' => 90,
         'moves' => 20,
         'weeks' => 24,
-        'halving_days' => 28,
+        'eras' => 6,
         'claim_days' => 90,
     ],
 

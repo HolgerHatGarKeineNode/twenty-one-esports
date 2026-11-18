@@ -3,7 +3,7 @@
 namespace App\Support\SeasonChain;
 
 /**
- * The consensus rules of `season-chain-v1` (docs/nips/esports.md, "Consensus
+ * The consensus rules of `season-chain-v2` (docs/nips/esports.md, "Consensus
  * rules"). Rule 6 (team wins: one block, the reward times the winners) never
  * fails, so it has no case. The case order is the check order.
  */
@@ -17,7 +17,7 @@ enum ConsensusRule: int
     case DailyLimit = 5;
     case SameSubtree = 7;
     case PairingPerSeason = 8;
-    case ShareCap = 9;
+    case KeyClosed = 9;
 
     /** Why a win failing this rule mines nothing, in a few words (the end-of-game panel, P7e). */
     public function reason(): string
@@ -31,7 +31,7 @@ enum ConsensusRule: int
             self::DailyLimit => __('the winner reached the daily block limit'),
             self::SameSubtree => __('both players get their trust from the same person'),
             self::PairingPerSeason => __('this pairing reached its blocks for the season'),
-            self::ShareCap => __('chess reached its share of this era\'s blocks'),
+            self::KeyClosed => __('this game has mined its whole share of the season'),
         };
     }
 }

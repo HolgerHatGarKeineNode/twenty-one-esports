@@ -110,7 +110,7 @@ final class ChainOverview
             'player-daily-limit' => __('daily limit of a player'),
             'same-subtree' => __('same trust circle'),
             'pairing-season-limit' => __('pairing limit for the season'),
-            'share-cap' => __('the game used up its share of the era'),
+            'key-closed' => __('the game has mined its whole share of the season'),
             // The solo rules of a score window (NIP rev. 9.18).
             'window-outside-season' => __('the window began before Block 0'),
             'too-few-entrants' => __('too few trusted players in the window'),
@@ -132,7 +132,18 @@ final class ChainOverview
         // The replay's figures come cached (SeasonChains::readout()); the parameters are built fresh, one query.
         $readout = $this->chains->readout($season);
         $parameters = $season->chainParameters();
-        $era = $parameters->contains($now) ? $parameters->eraAt($now) : null;
+        $inForce = $parameters->inForceAt($now);
+        // The era of every share key with a pot, from what it mined (`season-chain-v2`); null once the key is closed.
+        $keyEras = [];
+
+        foreach (array_keys($inForce->shares) as $shareKey) {
+            $keyEras[$shareKey] = $parameters->eraOf((string) $shareKey, array_sum($readout['mined_by_game_and_era'][$shareKey] ?? []));
+        }
+
+        // No era of the season exists any more. `era` is the earliest era a key is still in, what the pages
+        // that show one number read until they show the keys' own (`key_eras`).
+        $open = array_filter($keyEras, fn (?int $keyEra): bool => $keyEra !== null);
+        $era = $parameters->contains($now) ? ($open === [] ? $parameters->eras() : min($open)) : null;
         // The ten newest blocks only: the counts and the top miners are in the readout (P2, S3).
         $latest = $season->attestations()->whereNotNull('height')->orderByDesc('height')->limit(10)->get();
         $today = $now->utc()->startOfDay();
@@ -141,7 +152,9 @@ final class ChainOverview
             'season' => $season,
             'now' => $now,
             'era' => $era,
-            'next_halving' => $era !== null && $era < $parameters->eras() ? $parameters->eraStart($era + 1) : null,
+            'key_eras' => $keyEras,
+            // A halving has no date: it comes when a key has mined its era.
+            'next_halving' => null,
             'supply' => $parameters->supply,
             'mined' => $readout['mined'],
             'remaining' => $parameters->supply - $readout['mined'],
@@ -149,8 +162,8 @@ final class ChainOverview
             'blocks_today' => count(array_filter($readout['stored']['times'], fn (int $at): bool => $at >= $today->getTimestamp())),
             'tip' => $this->chains->tip($season),
             'last_block_at' => $latest->first()?->attested_at,
-            'rewards_now' => $this->rewards($parameters, $parameters->inForceAt($now), $era ?? 1),
-            'schedule' => $this->schedule($parameters, $now),
+            'rewards_now' => $this->rewardsNow($parameters, $inForce, $keyEras),
+            'schedule' => $this->schedule($parameters, $now, $era),
             'mined_by_game_and_era' => $readout['mined_by_game_and_era'],
             'latest' => $this->latest($latest->all()),
             'miners' => $this->miners($readout['stored']['miners']),
@@ -225,19 +238,13 @@ final class ChainOverview
             }
         }
 
-        // Era starts as SeasonParameters::eraStart() counts them, without replaying the change log.
-        $halvings = [];
-
-        for ($era = 2; $from->addSeconds(($era - 1) * max(1, $season->halving_seconds))->lt($to); $era++) {
-            $halvings[] = ['era' => $era, 'from' => $from->addSeconds(($era - 1) * $season->halving_seconds)];
-        }
-
         return [
             'from' => $from,
             'to' => $to,
             'now' => $now->lt($to) ? $now : $to,
             'supply' => $season->supply,
-            'halvings' => $halvings,
+            // A halving has no date (`season-chain-v2`): no hairline to draw.
+            'halvings' => [],
             'forecast' => $now->lt($to) ? $forecast : null,
             'days' => $days,
         ];
@@ -301,7 +308,7 @@ final class ChainOverview
             'parameters' => $parameters,
             'supply' => $parameters->supply,
             'rewards_now' => $this->rewards($parameters, $parameters->genesis, 1),
-            'schedule' => $this->schedule($parameters, $now),
+            'schedule' => $this->schedule($parameters, $now, null),
             // Only games that can mine feed the forecast: casual chess wins say nothing about chess blocks while rated chess is off.
             'streams' => $streams = array_values(array_filter($this->recentWins($now->subDays($estimator->windowDays), $now, $estimator->windowDays / 7), fn (array $stream): bool => self::mines($stream['weight_key']))),
             'estimate' => $estimator->forecast($parameters, $now, $streams, 0, []),
@@ -311,8 +318,8 @@ final class ChainOverview
     }
 
     /**
-     * How many wins of each game and mode the share cap of an era pays, if
-     * that game and mode alone mined it: floor(cap / block reward), the
+     * How many wins of each game and mode an era of its share key pays, if
+     * that game and mode alone mined it: floor(era size / block reward), the
      * block reward for a full team of winners (the estimator's "wins the
      * caps allow", for every game and mode that mines, not only those with
      * recent wins). A share group's cap is shared by all its games.
@@ -330,7 +337,7 @@ final class ChainOverview
             foreach ($parameters->weights as $key => $milli) {
                 [$game, $mode] = explode('/', $key, 2);
                 $reward = $season->rewardPerPlayer($milli, $era) * ($this->games->mode($game, $mode)->teamSize ?? 1);
-                $row[$key] = $reward > 0 ? intdiv($season->shareCap($parameters->shareFor($game), $era), $reward) : 0;
+                $row[$key] = $reward > 0 ? intdiv($season->eraSize($parameters->shareKey($game), $era), $reward) : 0;
             }
 
             $rows[] = $row;
@@ -356,9 +363,33 @@ final class ChainOverview
     }
 
     /**
-     * @return list<array{era: int, from: CarbonImmutable, budget: int, caps: array<string, int>, rewards: array<string, int>, current: bool}>
+     * Reward per winning player of every game and mode that mines, each in
+     * the era of its own share key; 0 once the key is closed or has no pot.
+     *
+     * @param  array<string, int|null>  $keyEras  share key => era, null when closed
+     * @return array<string, int>
      */
-    private function schedule(SeasonParameters $season, CarbonImmutable $now): array
+    private function rewardsNow(SeasonParameters $season, ConsensusParameters $parameters, array $keyEras): array
+    {
+        $rewards = [];
+
+        foreach ($parameters->weights as $key => $milli) {
+            $era = $keyEras[$parameters->shareKey(explode('/', $key, 2)[0])] ?? null;
+            $rewards[$key] = $era === null ? 0 : $season->rewardPerPlayer($milli, $era);
+        }
+
+        return $rewards;
+    }
+
+    /**
+     * One row per era: what it pays and what it holds per share key (`caps`:
+     * the key's era size, `budget` their sum). An era has no start date
+     * (`from` is null): each key enters it by what it mined. `current` marks
+     * the era live() reads as the season's.
+     *
+     * @return list<array{era: int, from: null, budget: int, caps: array<string, int>, rewards: array<string, int>, current: bool}>
+     */
+    private function schedule(SeasonParameters $season, CarbonImmutable $now, ?int $current): array
     {
         $rows = [];
         $parameters = $season->inForceAt($now);
@@ -366,17 +397,17 @@ final class ChainOverview
         for ($era = 1; $era <= $season->eras(); $era++) {
             $caps = [];
 
-            foreach ($parameters->shares + array_fill_keys(array_keys($parameters->daily), 100) as $game => $share) {
-                $caps[$game] = $season->shareCap($parameters->shareFor($game), $era);
+            foreach (array_keys($parameters->shares + $parameters->daily) as $game) {
+                $caps[$game] = $season->eraSize((string) $game, $era);
             }
 
             $rows[] = [
                 'era' => $era,
-                'from' => $season->eraStart($era),
-                'budget' => $season->eraBudget($era),
+                'from' => null,
+                'budget' => array_sum($caps),
                 'caps' => $caps,
                 'rewards' => $this->rewards($season, $parameters, $era),
-                'current' => $season->contains($now) && $season->eraAt($now) === $era,
+                'current' => $current === $era,
             ];
         }
 

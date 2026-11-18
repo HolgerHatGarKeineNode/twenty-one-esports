@@ -75,7 +75,6 @@ class SeasonParameterChange extends Model
             $this->changed_by_pubkey,
             $this->reason,
             $c['weights'] ?? [],
-            $c['shares'] ?? [],
             $c['daily'] ?? [],
             $c['pairlimit'] ?? null,
             $c['subtree'] ?? null,

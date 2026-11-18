@@ -173,7 +173,7 @@ final class RulesPage
         $rules = ChainDraft::inForce();
         $supply = $live->supply ?? PreSeason::potSats();
         $subsidy = $live->subsidy ?? $draft['subsidy'];
-        $days = intdiv($live->halving_seconds ?? $draft['halving_days'] * 86400, 86400);
+        $eras = $live->eras ?? $draft['eras'];
         $facts = [];
 
         if ($supply !== null) {
@@ -181,7 +181,7 @@ final class RulesPage
         }
 
         $facts[] = [__('Reward per win in era 1, at weight 1'), __(':sats sats', ['sats' => PreSeason::formatSats($subsidy)])];
-        $facts[] = [__('Era length'), trans_choice(':count day|:count days', $days)];
+        $facts[] = [__('Eras'), (string) $eras];
         $facts[] = [__('Minimum moves (chess, board games)'), (string) $rules->moves];
         $rows = [];
 

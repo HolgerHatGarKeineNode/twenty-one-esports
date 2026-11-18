@@ -71,10 +71,10 @@ final class SeasonRelease
 
     public const SLUG = 'pre-season';
 
-    public const CONSENSUS = 'season-chain-v1';
+    public const CONSENSUS = 'season-chain-v2';
 
     /** Genesis tags that the parameter digest covers (`group` from NIP rev. 9.5 on, `solo` from rev. 9.18 on). */
-    private const DIGEST_TAGS = ['season', 'supply', 'subsidy', 'weight', 'group', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'solo', 'halving', 'ends', 'claim', 'consensus'];
+    private const DIGEST_TAGS = ['season', 'supply', 'subsidy', 'weight', 'group', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'solo', 'eras', 'ends', 'claim', 'consensus'];
 
     public const MESSAGE_MAX = 280;
 
@@ -85,7 +85,7 @@ final class SeasonRelease
      * Pre-Season or, once a season exists, for the planned next season (its
      * slug).
      *
-     * @return array{slug: string, supply: int, subsidy: int, halving_seconds: int, weeks: int, claim_seconds: int, minimum_trust: int, message: string|null, parameters: array{weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, solo?: array{0: int, 1: int, 2: int}}}
+     * @return array{slug: string, supply: int, subsidy: int, eras: int, weeks: int, claim_seconds: int, minimum_trust: int, message: string|null, parameters: array{weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, solo?: array{0: int, 1: int, 2: int}}}
      */
     public static function draft(): array
     {
@@ -95,7 +95,7 @@ final class SeasonRelease
             'slug' => SeasonPlans::current()->slug ?? self::SLUG,
             'supply' => $chain['supply'],
             'subsidy' => $chain['subsidy'],
-            'halving_seconds' => $chain['halving_days'] * 86400,
+            'eras' => $chain['eras'],
             'weeks' => ChainDraft::weeks($chain),
             'claim_seconds' => $chain['claim_days'] * 86400,
             'minimum_trust' => $chain['trust_minimum'],
@@ -264,7 +264,7 @@ final class SeasonRelease
                     'league_pubkey' => $league->pubkey(),
                     'supply' => $draft['supply'],
                     'subsidy' => $draft['subsidy'],
-                    'halving_seconds' => $draft['halving_seconds'],
+                    'eras' => $draft['eras'],
                     'claim_seconds' => $draft['claim_seconds'],
                     'minimum_trust' => $draft['minimum_trust'],
                     'parameters' => $draft['parameters'],
@@ -412,9 +412,11 @@ final class SeasonRelease
             throw new SeasonReleaseRefused(__('This release has expired. Please start again.'));
         }
 
-        // A plan can shorten the season after the draft was saved.
-        if ($draft['halving_seconds'] > $draft['weeks'] * 604800) {
-            throw new SeasonReleaseRefused(__('An era of :days days is longer than the season of :weeks weeks.', ['days' => intdiv($draft['halving_seconds'], 86400), 'weeks' => $draft['weeks']]));
+        // The defaults were never through the form, and a draft can be older than this rule: Block 0 signs only what halves.
+        $refusal = ChainDraft::eraRefusal($supply, $draft['subsidy'], $draft['eras'], $draft['parameters']['weights'], $draft['parameters']['shares'], $draft['parameters']['groups']);
+
+        if ($refusal !== null) {
+            throw new SeasonReleaseRefused($refusal);
         }
 
         return LeagueKey::required();
@@ -452,10 +454,11 @@ final class SeasonRelease
      * (self::draft()): what Block 0 signs, and what the admin page shows
      * before the release ("What Block 0 signs"). A share group is a `group`
      * row before the shares; a draft without one signs exactly the tags of
-     * NIP rev. 5. `solo` (NIP rev. 9.18) follows `moves` only when a score
-     * game mines.
+     * NIP rev. 5 but for `eras`, which took the place of `halving`
+     * (`season-chain-v2`). `solo` (NIP rev. 9.18) follows `moves` only when
+     * a score game mines.
      *
-     * @param  array{slug: string, supply: int, subsidy: int, halving_seconds: int, claim_seconds: int, parameters: array{weights: array<string, int>, groups?: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, solo?: array{0: int, 1: int, 2: int}}}  $draft
+     * @param  array{slug: string, supply: int, subsidy: int, eras: int, claim_seconds: int, parameters: array{weights: array<string, int>, groups?: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, solo?: array{0: int, 1: int, 2: int}}}  $draft
      * @return list<list<string>>
      */
     public static function parameterTags(array $draft, int $endsAt): array
@@ -485,7 +488,7 @@ final class SeasonRelease
             ['subtree', (string) $p['subtree']],
             ['moves', (string) $p['moves']],
             ...(isset($p['solo']) ? [['solo', ...array_map(strval(...), $p['solo'])]] : []),
-            ['halving', (string) $draft['halving_seconds']],
+            ['eras', (string) $draft['eras']],
             ['ends', (string) $endsAt],
             ['claim', (string) $draft['claim_seconds']],
             ['consensus', self::CONSENSUS],
