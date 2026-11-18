@@ -178,3 +178,35 @@ test('a voided block keeps its sats in the key: the era does not go back', funct
 
     expect(ahWin($chain)->era)->toBe(2);
 });
+
+test('the worked example of the NIP: 10 001 sats, chess 60 % and the board games 30 %, two eras', function () {
+    // docs/nips/esports.md, "Worked example" (rev. 9.27). Subsidy 1 000; chess blitz 1, correspondence 2, Blockli blitz 1.
+    $chain = ahChain(supply: 10_001, subsidy: 1_000, shares: ['chess' => 60, 'board-games' => 30], eras: 2);
+    $season = $chain->season;
+
+    expect([$season->pot('chess'), $season->bound('chess', 1), $season->bound('chess', 2)])->toBe([6_000, 3_000, 4_500])
+        ->and([$season->pot('board-games'), $season->bound('board-games', 1), $season->bound('board-games', 2)])->toBe([3_000, 1_500, 2_250]);
+
+    $rows = [];
+
+    foreach (['chess/correspondence', 'chess/correspondence', 'blockli/blitz', 'chess/correspondence', 'chess/blitz', 'blockli/blitz'] as $key) {
+        $verdict = ahWin($chain, $key);
+        $rows[] = [$key, $verdict->mines() ? count($chain->blocks()) : null, $verdict->mines() ? $verdict->era : null, $verdict->reward, $verdict->reason];
+    }
+
+    expect($rows)->toBe([
+        ['chess/correspondence', 1, 1, 2_000, null],
+        // Chess mined 2 000 before it, below 3 000: era 1 in full, and the block crosses the bound.
+        ['chess/correspondence', 2, 1, 2_000, null],
+        ['blockli/blitz', 3, 1, 1_000, null],
+        // 4 000 before it: era 2. It crosses the last bound (4 500) and stays inside the pot.
+        ['chess/correspondence', 4, 2, 1_000, null],
+        // 5 000 before it, at or above the last bound: chess is closed, with 1 000 sats of its pot unmined.
+        ['chess/blitz', null, null, 0, 'key-closed'],
+        // The board games stand where they stood: era 1.
+        ['blockli/blitz', 5, 1, 1_000, null],
+    ])
+        ->and($chain->mined())->toBe(7_000)
+        // The rest: 1 001 sats no game had, 1 000 of chess, 1 000 of the board games.
+        ->and($chain->remaining())->toBe(3_001);
+});

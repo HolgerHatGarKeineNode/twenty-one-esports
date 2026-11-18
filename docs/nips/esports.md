@@ -202,6 +202,46 @@ nothing changes: revision 9.24 holds word for word, the result has no `block`, a
 block, consensus rule or season parameter changes. A validator that does not know revision 9.26 MUST reject a chain
 with a `weight` for a game it has no rules for, rather than skip its blocks.
 
+The rules marked "rev. 9.27" are a draft: they replace the calendar halving of the season chain with a halving by
+amount, under a new rule set name, `season-chain-v2`. They apply to every chain season whose genesis carries
+`consensus` `season-chain-v2`; such a genesis has an `eras` tag and no `halving` tag. A genesis with `consensus`
+`season-chain-v1` (the test bed's Pre-Season, printed in the [examples](#examples)) is read by revision 9.26 as it
+was signed; this league signs no such genesis any more. A validator that does not know `season-chain-v2` MUST reject
+a chain that names it rather than read it by the dates of `season-chain-v1`.
+
+### Changelog of revision 9.27 (2026-11-18, draft)
+
+A game halves by what it has mined, never by a date (user, 2026-11-18: a slow week must not burn an era, and a busy
+one must not empty the supply). No new kind; one tag replaces another in the `2156` (`eras` for `halving`), one tag
+leaves the `2158` (`share`), and the rule set is `season-chain-v2`. Checked against the app's tests and against an
+independent recomputation of the sample ledger (336 candidates, 125 blocks); not on a public relay, and no printed
+event is signed under it (see [Examples not signed again](#examples-not-signed-again-rev-927)).
+
+- **A pot per share key** ([Eras and rewards](#eras-and-rewards)): `pot = floor(supply * share / 100)`, fixed at
+  Block 0. What the rounding loses and every percent no share key has belong to no game: the **rest**.
+- **Halving by amount.** Era `n` of a share key ends when the key has mined `pot - floor(pot / 2^n)`. The era of a
+  block follows from the sats of all earlier blocks of its share key, voided ones included. The reward formula is
+  unchanged; `created_at` no longer moves a reward.
+- **`eras` replaces `halving`** in the `2156` and in the parameter digest: the number of eras of every share key
+  (this league: 6). After its last era a share key is **closed** and mines nothing more in the season.
+- **A block may cross a bound.** It pays the full reward of the era it began in, also across the last bound, as long
+  as its share key stays within its pot and the chain within the supply.
+- **Rule 9 is the closed key** (`key-closed`), in place of the share cap per era (`share-cap`); rule 0 keeps the
+  supply.
+- **Shares are fixed at Block 0.** The `2158` has no `share` row any more. A game can still start to mine in a season
+  by a `weight`, but only under a share key that has a `share` in the genesis; a `share` absent from the genesis now
+  means no pot (before: 100).
+- **The league checks a draft before it signs** ([Draft check](#draft-check-rev-927)): every weight pays at least 1
+  sat in the last era, and the largest block of the last era fits what that era holds. Every `weight` change of a
+  live season is held to the same check.
+- **The season still ends at `ends`,** not when the keys close. The review states the rest, `supply` minus
+  everything mined, as a number; nobody is paid from it.
+- **Unchanged:** the block order (height and link), rules 1 to 8, the per-game readings of rule 2 including
+  Blockspace's count of transactions (rev. 9.26), solo and table blocks apart from rule 9, voids, payouts.
+- **History.** Under `season-chain-v1` (revisions 5 to 9.26) the genesis carried `halving` `<seconds>`, era `n`
+  began at `T0 + (n - 1) * halving` for all games at once, the era budget was `floor(supply / 2^n)`, and rule 9 held
+  the blocks of a share key within `floor(budget * share / 100)` per era; a `2158` could change a `share`.
+
 ### Changelog of revision 9.26 (2026-11-18, draft)
 
 Hyperbitcoinization mines (user, 2026-11-18: from Block 0 if it is solid, otherwise by a parameter change in the
@@ -226,7 +266,7 @@ for the game while the league has switched it on, and none otherwise.
   least one territory in the match (`no-conquest`): a match of passed turns that the round limit decides mines nothing.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
-- **Blockspace counts the transactions set** (league's decision, 2026-11-18; [consensus rule 2](#consensus-rules-season-chain-v1)):
+- **Blockspace counts the transactions set** (league's decision, 2026-11-18; [consensus rule 2](#consensus-rules-season-chain-v2)):
   its sides move in the order first, second, second, first, so it has no full moves, and a game sets 42 transactions
   at most. For rule 2 the length of a Blockspace game is the number of transactions both sides set; a pass is not
   counted, as passes alone could lengthen any game. Every other board game keeps its full moves. The league publishes
@@ -528,7 +568,7 @@ new tag.
 ### Changelog of revision 9.13 (2026-09-29)
 
 Board games in the season chain ([Board games](#board-games-rev-912),
-[Consensus rules](#consensus-rules-season-chain-v1), [Season Genesis](#season-genesis-2156)). No new kind and
+[Consensus rules](#consensus-rules-season-chain-v2), [Season Genesis](#season-genesis-2156)). No new kind and
 no new tag.
 
 - **Rated board games.** Besides its casual queue each board game has a rated queue, open while the
@@ -1005,7 +1045,7 @@ and khatru, and without printed examples (see [Open points](#open-points)).
   clan leaves every lineup at once, so a lineup can fall below its size without a new `32151`.
 - **Lineups list active members only** (validation rule 8): the owner places members; nobody else
   signs anything for a lineup.
-- **Consensus rule 7 compares the two gatekeepers** ([Consensus rules](#consensus-rules-season-chain-v1)),
+- **Consensus rule 7 compares the two gatekeepers** ([Consensus rules](#consensus-rules-season-chain-v2)),
   as rule 1 does, not every winning and losing player of a series. This corrects the wording of
   revision 5: the revision-5 examples, the sample ledger and the reference engine were computed this
   way, so no revision-5 block changes.
@@ -1329,9 +1369,10 @@ it and returns non-matching events; see the relay proof).
 | `ends` | `<unix seconds>` | 2156 (rev. 5) | the fixed end of the chain season |
 | `supply`, `subsidy` | `<sats>` | 2156 (rev. 5) | the season's supply; the base reward per winning player, see [Season Genesis](#season-genesis-2156) |
 | `weight` | `<game>/<mode>`, `<factor>` | 2156 (rev. 5) | reward factor per winning player |
-| `share`, `daily` | `<game>`, `<percent>` / `<blocks>` | 2156 (rev. 5) | share cap per era; block weight limit per player and UTC day |
-| `halving`, `claim` | `<seconds>` | 2156 (rev. 5) | length of an era; claim window for unpaid players |
-| `consensus` | `season-chain-v1` | 2156 (rev. 5) | the rule set of [Consensus rules](#consensus-rules-season-chain-v1) |
+| `share`, `daily` | `<share key>`, `<percent>` / `<blocks>` | 2156 (rev. 5) | the share key's part of the supply, its pot (rev. 9.27; before: a share cap per era); block weight limit per player and UTC day |
+| `eras` | `<count>` | 2156 (rev. 9.27) | the eras of every share key; replaces `halving` `<seconds>` (rev. 5 to 9.26) |
+| `claim` | `<seconds>` | 2156 (rev. 5) | claim window for unpaid players |
+| `consensus` | `season-chain-v2` | 2156 (rev. 5; the value rev. 9.27) | the rule set of [Consensus rules](#consensus-rules-season-chain-v2) |
 | `block` | `<height>` or empty, `<previous block id or tip id>` | 2154 (rev. 5) | the block this attestation mines, and the block before it; an empty height: the win does not mine, and the id is the tip it was checked against |
 | `anchor` | `<anchor pubkey>`, `<percent>` | 30382 (rev. 5) | the anchor with the largest share in the player's trust, and that share |
 | `x` | `<sha256 hex>` | 1985 (rev. 5) | the parameter digest a release label releases |
@@ -2666,7 +2707,7 @@ gets a new key, and the ladders name the key in their `trust` tag.
   version of the anchor list the rank was computed from.
 - **Anchor subtree** (rev. 5). Each assertion also carries `["anchor", "<anchor pubkey>", "<percent>"]`,
   the anchor with the largest share in the player's trust; consensus rule 7 of the
-  [season chain](#consensus-rules-season-chain-v1) uses it. It is an additional output of the same
+  [season chain](#consensus-rules-season-chain-v2) uses it. It is an additional output of the same
   algorithm; the rank does not change, so the trust key stays the same.
 
 ### Anchor list (`30000`, rev. 4)
@@ -2924,7 +2965,7 @@ the unrated semi-final #422 gives nothing (relay proof, round 4).
 ## Season chain (rev. 5)
 
 From revision 5 on, every season is its own **chain** with a fixed **supply** of sats, and winning is
-the proof of work. A win that passes the [consensus rules](#consensus-rules-season-chain-v1) is a
+the proof of work. A win that passes the [consensus rules](#consensus-rules-season-chain-v2) is a
 **block** and earns a **block reward**. Blocks count in the order the league signs its attestations,
 and each attestation names the block before it, as in Bitcoin. Rewards stay pending during the season
 and are paid once, at season end, after a public review. The league signs the order and its
@@ -2961,15 +3002,15 @@ Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that bloc
 |---|---|---|
 | `season` | `<season slug>` | the season, as in the ladders |
 | `supply` | `<sats>` | the season's supply: the most its blocks pay out, settled after the season end (rev. 9.5: no reserve balance is required at Block 0) |
-| `subsidy` | `<sats>` | the base reward per winning player in era 1 at weight 1 |
+| `subsidy` | `<sats>` | the base reward per winning player in era 1 of the game's share key at weight 1 |
 | `weight` | `<game>/<mode>`, `<factor>` | one row per game and mode that mines: the factor **per winning player**, a decimal with at most three decimal places. A game and mode without a row does not mine |
 | `group` | `<share key>`, `<game>`, `<game>`, ... | rev. 9.5, optional: the listed games count as one for rules 5 and 9, under the share key; a game is in at most one group, and a share key is never the slug of a game |
-| `share` | `<share key>`, `<percent>` | share cap of the game per era (rule 9), 1 to 100; absent means 100. The share key is the game's `group`, otherwise the game |
+| `share` | `<share key>`, `<percent>` | the share key's part of the supply, 1 to 100: its **pot** is `floor(supply * percent / 100)` (rev. 9.27). The shares add up to at most 100; a share key without a row has no pot and never mines. The share key is the game's `group`, otherwise the game. Fixed for the season |
 | `daily` | `<share key>`, `<blocks>` | block weight limit: blocks per winning player, share key and UTC day (rule 5); absent means no limit |
-| `halving` | `<seconds>` | length of an era; era `n` starts at `T0 + (n - 1) * halving` |
+| `eras` | `<count>` | rev. 9.27: the number of eras of every share key, a positive integer; after its last era a share key is closed. No date is part of it |
 | `ends` | `<unix seconds>` | the fixed end of the season; every ladder of the season closes with this `ends` |
 | `claim` | `<seconds>` | claim window for players who cannot be paid at settlement |
-| `consensus` | `season-chain-v1` | the rule set of this NIP by which blocks are valid |
+| `consensus` | `season-chain-v2` | the rule set of this NIP by which blocks are valid (rev. 9.27) |
 | `a` | the season's announcement `31923` | |
 | `pairlimit` | `<per UTC day>`, `<per season>` | blocks per pairing (rules 4 and 8); absent means `1`, `3` |
 | `subtree` | `<percent>` | rule 7: two players are in the same anchor subtree if both shares of the same anchor are at least this; absent means `51`; `101` switches rule 7 off |
@@ -2987,7 +3028,8 @@ in the ladders, where they were; the genesis holds only what spans all games: on
 reward schedule, one set of caps.
 
 **Parameter digest.** `P` is the list of the genesis tags whose name is one of `season`, `supply`,
-`subsidy`, `weight`, `group` (rev. 9.5), `share`, `daily`, `pairlimit`, `subtree`, `moves`, `solo` (rev. 9.18), `halving`,
+`subsidy`, `weight`, `group` (rev. 9.5), `share`, `daily`, `pairlimit`, `subtree`, `moves`, `solo` (rev. 9.18), `eras`
+(rev. 9.27),
 `ends`, `claim`, `consensus`, in event order. The
 digest is `SHA-256` of the UTF-8 JSON serialization of `[<content>, P]`, without whitespace and with
 the escaping rules of NIP-01's event serialization.
@@ -3010,16 +3052,86 @@ admins; the test bed's season 5 was released that way.)
 
 ### Eras and rewards
 
-For an attestation with `created_at` `t`: era `n = floor((t - T0) / halving) + 1`, and the reward per
-winning player is `floor(subsidy * w / 2^(n - 1))`, with the weight `w` of the ladder's game and mode,
-computed in integers (`w` in thousandths: `subsidy * w_milli / (1000 * 2^(n - 1))`, rounded down).
-The era and the reward are fixed when the league signs the attestation; within an era every valid win
-of a game and mode pays the same, and a halving never reverses. Before a game the app can only say
-"about" the reward: the attestation may fall into the next era.
+Every number here is an integer, and every division rounds down.
 
-The **era budget** `B_n = floor(supply / 2^n)` (half the supply in era 1, a quarter in era 2, ...)
-exists only for the share cap (rule 9). Mining stops when a block no longer fits the remaining supply;
-ratings go on until `ends`.
+**Pot.** Every share key `k` (a game's `group`, otherwise the game) has a pot, fixed by the genesis:
+
+    pot_k = floor(supply * share_k / 100)
+
+A share key without a `share` has no pot. What the rounding loses, and every percent that no share key has, belong
+to no game: they are part of the **rest**.
+
+**Bounds.** A share key halves `eras` times, by what it has mined. Its era `n` (1 to `eras`) ends when the key
+has mined
+
+    bound_k(n) = pot_k - floor(pot_k / 2^n)
+
+so era 1 holds about half the pot, era 2 a quarter, and the last era ends `floor(pot_k / 2^eras)` below the pot.
+
+**The era of a block.** Let `m` be the sum of the block rewards of all earlier blocks of the candidate's share key
+in this chain, the blocks voided by the review included. The candidate's era is the smallest `n` from 1 to `eras`
+with `m < bound_k(n)`. If there is none, the share key is **closed**: the win does not mine (rule 9), and no later
+win of that share key does. `created_at` plays no part: a win pays the same on the first day of the season and on
+the last, as long as its game stands in the same era.
+
+**Reward.** The reward per winning player is `floor(subsidy * w / 2^(n - 1))`, with the weight `w` of the ladder's
+game and mode in force for the candidate, computed in integers (`w` in thousandths:
+`subsidy * w_milli / (1000 * 2^(n - 1))`, rounded down). The block reward is that times the winning players
+(rule 6).
+
+**Crossing a bound.** The era is decided by `m` before the block. The block pays the full reward of that era and
+may end above the bound, also above the last one; the next block of the share key is then judged by the new `m`.
+Two guards hold for every block, with `mined` the rewards of all earlier blocks of the chain: `m + reward <= pot_k`
+(rule 9) and `mined + reward <= supply` (rule 0).
+
+The era and the reward follow from the order of the blocks alone, and the league signs that order; a halving never
+reverses, since a voided block keeps its sats in `m`. Before a game the app can only say "about" the reward: another
+win of the same share key may be attested first and take the key into its next era.
+
+**The rest.** `supply` minus the rewards of all blocks is what no block mined: the rounding, the percent without a
+share key, what a closed share key left of its pot, and what the season's end left unmined. The season review
+states it as one number. It is paid to nobody; like a voided reward it stays with the league reserve
+([Season end](#season-end)). Mining of a share key stops when it is closed; the season, and the ratings, go on until
+`ends`.
+
+#### Draft check (rev. 9.27)
+
+The league signs a genesis only if, for every `weight` above 0 with a pot behind it:
+
+- the reward per winning player in the last era is at least 1 sat: `floor(subsidy * w_milli / (1000 * 2^(eras - 1))) >= 1`;
+- the largest block of that game and mode in the last era (the reward per winning player times the most winners its
+  mode has) is at most what the last era holds, `floor(pot_k / 2^eras)`.
+
+With the second condition a block that begins in the last era ends at or below the pot. It does not bind the earlier
+eras: where a weight is large against its pot, one block can pass more than one bound, and the pot guard of rule 9
+refuses a block that would end above the pot while a smaller one of the same share key still mines. The check is the
+league's; a reader needs only the rules above. A `weight` change of a live season
+([Parameter changes](#parameter-changes-2158)) is held to the same two conditions.
+
+#### Worked example (rev. 9.27)
+
+A season with `supply` 10 001, `subsidy` 1 000, `eras` 2, `share` chess 60 and board-games 30 (a `group` of the
+board games), and the weights chess blitz 1, chess correspondence 2, Blockli blitz 1. No other limit is in the way.
+
+| share key | pot | bound(1) | bound(2) | the last era holds |
+|---|---|---|---|---|
+| chess | floor(10 001 * 60 / 100) = 6 000 | 6 000 - 3 000 = 3 000 | 6 000 - 1 500 = 4 500 | 1 500 |
+| board-games | floor(10 001 * 30 / 100) = 3 000 | 3 000 - 1 500 = 1 500 | 3 000 - 750 = 2 250 | 750 |
+
+Draft check: in era 2 chess blitz pays 500, correspondence 1 000 (at most 1 500), Blockli blitz 500 (at most 750).
+
+| win | `m` before | era | reward | `m` after | |
+|---|---|---|---|---|---|
+| chess correspondence | 0 | 1 (0 < 3 000) | 2 000 | 2 000 | block 1 |
+| chess correspondence | 2 000 | 1 (2 000 < 3 000) | 2 000 | 4 000 | block 2: it **crosses** bound(1) and pays era 1 in full |
+| Blockli blitz | 0 | 1 (0 < 1 500) | 1 000 | 1 000 | block 3; chess does not move the board games |
+| chess correspondence | 4 000 | 2 (4 000 >= 3 000, 4 000 < 4 500) | 1 000 | 5 000 | block 4: it crosses the last bound; 5 000 <= 6 000 |
+| chess blitz | 5 000 | none (5 000 >= 4 500) | 0 | 5 000 | no block, rule 9: chess is **closed** |
+| Blockli blitz | 1 000 | 1 (1 000 < 1 500) | 1 000 | 2 000 | block 5: it crosses bound(1) of the board games |
+
+Mined: 7 000. The rest is 10 001 - 7 000 = 3 001: 1 001 that no share key had (10 001 - 6 000 - 3 000), 1 000 that
+chess left of its pot when it closed, and 1 000 the board games had not mined at `ends`. The app's tests hold the
+engine to this table (`AmountHalvingTest`).
 
 ### Blocks (`block` in `2154`)
 
@@ -3050,7 +3162,7 @@ attests its first place once, with the window's `31923` as `a` and a `block` tag
 [solo rules](#solo-blocks-rev-918-draft) decide whether it mines. A score window has no other attestation and no
 loser. A leaderboard an organizer opened is a tournament like any other: no attestation, no block.
 
-### Consensus rules (`season-chain-v1`)
+### Consensus rules (`season-chain-v2`)
 
 A candidate mines if, checked against the blocks up to the id in its `block` tag and with the
 parameters in force at its `created_at` (the genesis, changed by every [parameter change](#parameter-changes-2158)
@@ -3084,8 +3196,11 @@ the first rule it fails, in this order.
    revision-5 examples and the sample ledger compute.
 8. **Blocks per pairing and season.** Fewer earlier blocks of the same pairing in the season than the
    second value of `pairlimit` (default 3).
-9. **Share cap per game and era.** The rewards of the blocks of the game's share key (its `group`,
-   otherwise the game) in this era, this one included, stay within `floor(B_n * share / 100)`.
+9. **The share key is open** (rev. 9.27; reason `key-closed`). The game's share key (its `group`, otherwise the
+   game) is not closed: with `m` the rewards of its earlier blocks, an era `n` from 1 to `eras` has
+   `m < bound(n)` ([Eras and rewards](#eras-and-rewards)), and the block stays within the pot:
+   `m + reward <= pot`. A share key without a `share` in the genesis has pot 0 and is closed from Block 0 on.
+   Rule 9 comes last: a win that fails another rule has that rule's reason, also while its share key is closed.
 
 #### Solo blocks (rev. 9.18, draft)
 
@@ -3161,7 +3276,7 @@ candidate fails.
 8. **Pairing limit per season.** As rule 4, over the season (`pairing-season-limit`).
 
 Rule 5 counts the block for the winner alone, rule 9 for the share key `hyperbitcoinization`; the reward is the
-subsidy of the era times the `weight`, for one player.
+subsidy of that share key's era times the `weight`, for one player.
 
 A reader recomputes every table rule from the attestation alone: its `place` and `forfeit` rows give the winner, the
 losers and whether the match had a forfeit; its `conquests` row gives the rest of rule 2, which rests on the league's
@@ -3184,19 +3299,21 @@ re-forecasts from the live data. Every change is a regular event signed by the l
 | `e` | the genesis of the season; the version of the admin list |
 | `effective` | `<unix seconds>`: the change is in force for every attestation with a `created_at` from here on; not earlier than the change's own `created_at` |
 | `tip` | the newest block of the chain when the change was signed |
-| `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves` | the changed parameters, in the formats of the genesis. A `weight`, `share` or `daily` row adds or replaces the row for its game (and mode) or share key; weight `0` stops a game from mining. Rev. 9.5: a game or mode that starts to mine needs a `share` and a `daily` row for its share key in force, so a new game brings its weight, share and daily limit in the same change |
+| `weight`, `daily`, `pairlimit`, `subtree`, `moves` | the changed parameters, in the formats of the genesis. A `weight` or `daily` row adds or replaces the row for its game (and mode) or share key; weight `0` stops a game from mining. Rev. 9.27: there is no `share` row, the shares are those of the genesis. A game or mode that starts to mine needs a `share` of its share key in the genesis and a `daily` row in force, so a new game brings its weight and its daily limit in the same change, and a game whose share key has no share in the genesis cannot start to mine before the next season. The changed weights pass the [draft check](#draft-check-rev-927) |
 | `p` | `<admin>`, `<relay>`, `change`: who made the change, a key of the admin list |
 | `alt` | NIP-31 text |
 
-`content` states why. Supply, subsidy, eras, `ends`, `claim`, the share groups, `solo` (rev. 9.18) and the rule
+`content` states why. Supply, subsidy, `eras`, the shares (rev. 9.27: a share is a pot, and every bound follows
+from it), `ends`, `claim`, the share groups, `solo` (rev. 9.18) and the rule
 set cannot change during a season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
 a parameter wins.
 
 **Never retroactive.** A change applies only to attestations signed at or after `effective`, and the
 league signs no attestation at or after `effective` whose `block` tag names a block before `tip`.
 Blocks attested before are evaluated, and paid, with the parameters that were in force for them.
-Within an era every valid win of a game pays the same **between two changes**; the app says "about"
-before a game for this reason too.
+Within an era of its share key every valid win of a game and mode pays the same **between two changes**; the app
+says "about" before a game for this reason too. A changed weight never moves an era: `m` is the sats that were
+mined, whatever weight mined them.
 
 **What a reader can check.** The parameters for every candidate follow from the genesis and the
 changes on the relays (`{"kinds":[2158],"authors":["<league>"],"#e":["<genesis id>"]}`). A change
@@ -3339,7 +3456,7 @@ memberships, opponent lists, tournament sign-ups and zaps to the reserve go on. 
 
 | signed by the league | derived by everyone |
 |---|---|
-| the parameters (genesis), released by a listed admin's label; their changes (`2158`) | eras, rewards, the era budgets; the parameters in force for each block |
+| the parameters (genesis), released by a listed admin's label; their changes (`2158`) | pots and bounds, the era of every block, rewards, the rest; the parameters in force for each block |
 | the order of blocks (`block`: height and link, or the tip) | whether a win mines, and why not |
 | the corrections of the review (`void-block` labels) | mined, remaining and voided supply; share per game |
 | the payouts (`2157`) with invoice and preimage | the amount each player is owed; fee shares; the reserve balance |
@@ -3822,8 +3939,10 @@ Per kind:
     and `thumb` are the URLs of that game and tier. **8**: signed by the badge key; one `a` to a rank
     badge definition and one `p`, the player of its `d`; at most one award per definition.
 26. **2156** (rev. 5): signed by the league key; `season`, `supply`, `subsidy`, at least one `weight`,
-    `halving`, `ends`, `claim`, `consensus` `season-chain-v1` present; integers positive, weights
-    positive decimals with at most three decimal places, `share` between 1 and 100, `ends` later than
+    `eras`, `ends`, `claim`, `consensus` `season-chain-v2` present and no `halving` (rev. 9.27; a genesis
+    with `halving` and `season-chain-v1` is read by revision 9.26); integers positive, weights
+    positive decimals with at most three decimal places, `share` between 1 and 100 and the shares at most 100
+    together, `ends` later than
     `created_at`; one `a` to the season's `31923` announcement; at most one `e` to the league's
     reserve goal (`9041`; rev. 9.5: optional, before it required); one `e` to the release label, one
     `e` to a version of the admin list and one `p` with role `release` as in
@@ -3837,7 +3956,7 @@ Per kind:
     with a winner, none on others; a non-empty height is the previous block's height plus 1 (1 after
     the genesis), and no other block names the same previous block; an empty height names the newest
     block at signing; a block passes, and a non-mining candidate fails, the
-    [consensus rules](#consensus-rules-season-chain-v1) checked against the blocks up to the named id.
+    [consensus rules](#consensus-rules-season-chain-v2) checked against the blocks up to the named id.
     The `gate` rows follow the revision-5 rule for opponent-list ids. Rev. 7: an attestation with a
     tournament `a` has no `block` tag; it is not a rated result "with a winner" for this rule, and no
     block counts it.
@@ -3858,11 +3977,12 @@ Per kind:
     `e` to a version of the admin list and one `p` with role `change` listed in it; `effective` not
     earlier than `created_at` and not later than the genesis' `ends`; `tip` is the newest block of the
     chain at `created_at`, and no attestation with a `created_at` at or after `effective` names an
-    earlier block in its `block` tag; only `weight`, `share`, `daily`, `pairlimit`, `subtree` and
-    `moves` rows, with the formats of the genesis; `content` the reason.
+    earlier block in its `block` tag; only `weight`, `daily`, `pairlimit`, `subtree` and
+    `moves` rows, with the formats of the genesis, and no `share` row (rev. 9.27: a change that carries one is
+    invalid as a whole); `content` the reason.
 33. **30000** (admin list, rev. 5): signed by the league key; `d` = `esports/<league key>/admins`.
 31. **30382** (rev. 5): the `anchor` row names an anchor of the anchor list the assertion references,
-    with an integer share from 0 to 100, as computed in [Anchor subtree](#consensus-rules-season-chain-v1).
+    with an integer share from 0 to 100, as computed in [Anchor subtree](#consensus-rules-season-chain-v2).
 34. **22150** (tournament consent, rev. 7): checked by the league only, never published; see
     [Tournament Consent](#tournament-consent-22150) for the checks. A league relay refuses the kind like
     any event not from the league publisher. A reader that meets a `22150` anywhere gives it no meaning:
@@ -4995,7 +5115,7 @@ table of the `nostr-protocol/nips` README at `b82211e` (head, 2026-09-25 13:51 U
 `"kind === 2156"`, `"kind == 2156"`, `"kind\":2156"` and the same five for `2157` 0 hits (controls
 `"kind: 30023"` 954, `"kind === 30023"` 353); the four EINUNDZWANZIG repositories contain neither number
 (control `32121`: 7 files in `einundzwanzig-verein`). The new tags `block`, `supply`, `subsidy`,
-`weight`, `share`, `daily`, `halving`, `consensus` and `anchor` appear in none of the 100 NIP files
+`weight`, `share`, `daily`, `halving` (until rev. 9.26; its successor `eras` of rev. 9.27 was not searched for), `consensus` and `anchor` appear in none of the 100 NIP files
 (snapshot at `62d5fed`; `b82211e` changed only the README) nor in the README's tag table (controls:
 `["zap"` in `57.md`, `["rank"` in `85.md`). `claim` is a tag of NIP-43 (`["claim", "<invite code>"]` in
 a relay join request); tags are read per kind, and in `2156` it only names the claim window. `x` is
@@ -6627,11 +6747,82 @@ Signed by the league's LNURL server key. `description` is the sponsor desk's zap
 
 ### Revision 5: the Pre-Season, the season chain, rank badges and a bounty
 
-The test bed's **Pre-Season** is its chain season under the final rules of revision 5, **compressed
-for the examples**: eras of 15 minutes and forty minutes in all (production: eras of weeks, a season of
-months). In production it is the league's first chain season. Supply 1 000 000 sats, subsidy 2 100,
-weights per winning player chess blitz 1, correspondence 2, Rocket League 2v2 2.5, share cap 50 % per
-game and era, 10 blocks per player, game and day, and the looser Pre-Season defaults `pairlimit` 3 per
+#### Examples not signed again (rev. 9.27)
+
+The events of this section were signed on the test bed under `season-chain-v1`, before revision 9.27, and are
+printed unchanged: the throwaway keys of the test bed are not kept with this document, so nothing here was signed
+again, and no signature was altered. They stay valid examples of their kinds and of the chain's links. What differs
+from a `season-chain-v2` season:
+
+| printed example | difference to revision 9.27 |
+|---|---|
+| Season Genesis (`2156`) | carries `["halving", "900"]` where rev. 9.27 has `["eras", "<count>"]`, and `["consensus", "season-chain-v1"]` where rev. 9.27 has `["consensus", "season-chain-v2"]`; its message speaks of eras of 15 minutes. All other tags are as in rev. 9.27 |
+| Release (`1985`) | its `x` is the digest over the tag list of revision 5 (with `halving`); the tags are the same, the value differs. With the tags of the [unsigned genesis below](#season-genesis-2156-under-season-chain-v2-unsigned) it is `314e25bb8e2642cd7f7532b3a7bbfd83ad9c0bba84effaa186cc88fa5eb5a638` |
+| Parameter Change (`2158`) | no tag differs (it changes `pairlimit` and `subtree`, no `share`); it names the genesis above by `e` |
+| Ladder (`32152`), League Attestations (`2154`) #431, #434 and #435, Correction (`1985`), Payouts (`2157`) of alice and carol | no tag differs; each names the genesis above or a block of its chain by id, so it belongs to that `season-chain-v1` chain |
+| the narrative and the table below | eras, rewards and settlement sums are those of the 15-minute eras: #433 in era 2 (1 050), #435 in era 3 (1 312 each) |
+
+Read under `season-chain-v2` with `eras` 3, the same four blocks would all stand in era 1 of their game (chess mined
+6 300 of its pot of 500 000, Rocket League 10 500): 2 100 each for #431, #432 and #433, and 5 250 each for alice and
+bob in #435. The settlement would be alice 8 400 (2 100 + 5 250, fees 1 050), bob 6 300, carol 23 100 (2 100,
+bounty 21 000), the rest 983 200 and the voided 2 100. No event with these sums exists.
+
+Every other example of this document (rounds 1 to 4, round 6, revision 9.4, and in this section the reserve, the zap
+receipts, the trust assertion, the admin list, the season announcement, the challenge, the bounty and the badge
+events) carries no tag that revision 9.27 touches.
+
+#### Season Genesis (`2156`) under `season-chain-v2`, unsigned
+
+The tags of the printed genesis as revision 9.27 writes them, with three eras per game. It has no `id` and no `sig`:
+nobody signed it, and the id of its release label (the first `e` after the reserve) would follow from a label that
+carries the new digest. The parameter digest of this content and these tags is
+`314e25bb8e2642cd7f7532b3a7bbfd83ad9c0bba84effaa186cc88fa5eb5a638`; computed the same way, the printed genesis gives
+the `x` of the printed release.
+
+```json
+{
+  "kind": 2156,
+  "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
+  "created_at": 1790351100,
+  "tags": [
+    ["season", "pre-season"],
+    ["supply", "1000000"],
+    ["subsidy", "2100"],
+    ["weight", "chess/blitz", "1"],
+    ["weight", "chess/correspondence", "2"],
+    ["weight", "rocket-league/2v2", "2.5"],
+    ["share", "chess", "50"],
+    ["share", "rocket-league", "50"],
+    ["daily", "chess", "10"],
+    ["daily", "rocket-league", "10"],
+    ["pairlimit", "3", "5"],
+    ["subtree", "90"],
+    ["moves", "20"],
+    ["eras", "3"],
+    ["ends", "1790353500"],
+    ["claim", "7776000"],
+    ["consensus", "season-chain-v2"],
+    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/pre-season", "wss://relay.example.org"],
+    ["e", "760523a302a189819997f038aedf3eba738a36eff5486dda6427c98bb64f3564", "wss://relay.example.org"],
+    ["e", "<id of the release label that carries this digest>", "wss://relay.example.org"],
+    ["e", "d957dc7bb9ff198912695ccc1cfd314e6d86fc20349189d25f3817b7b69b56e6", "wss://relay.example.org"],
+    ["p", "2a0335d330a81f7c1d701d8c750593d03a0ab3d2c19bbcebd66faa21cb6c078c", "", "release"],
+    ["alt", "Season genesis: TWENTY ONE Esports Pre-Season, Block 0"]
+  ],
+  "content": "25/Sep/2026 TWENTY ONE Esports: Chancellor on brink of second checkmate. Block 0 of the Pre-Season. Demo season of the protocol examples: three eras per game, forty minutes in total."
+}
+```
+
+Each pot is 500 000 sats, with the bounds 250 000, 375 000 and 437 500; the draft check passes (in era 3 chess
+blitz pays 525, correspondence 1 050, a 2v2 block 2 * 1 312 = 2 624, each at most 62 500).
+
+#### The test bed's Pre-Season, as signed
+
+The test bed's **Pre-Season** is its chain season under the final rules of revision 5 (`season-chain-v1`, which
+halved by date), **compressed for the examples**: eras of 15 minutes and forty minutes in all. In production it is
+the league's first chain season. Supply 1 000 000 sats, subsidy 2 100,
+weights per winning player chess blitz 1, correspondence 2, Rocket League 2v2 2.5, a share cap of 50 % per
+game and era (the `share` of `season-chain-v1`), 10 blocks per player, game and day, and the looser Pre-Season defaults `pairlimit` 3 per
 day and 5 per season, `subtree` 90.
 
 It follows the test bed's **season 5** (13:15 to 15:15), which the first draft of revision 5 released
@@ -6789,6 +6980,8 @@ All of it recomputes from relay data alone, on each of the three relays (relay p
 
 #### Release (`1985`) by one admin
 
+Signed before revision 9.27: its `x` is the digest of the `season-chain-v1` genesis below.
+
 ```json
 {
   "kind": 1985,
@@ -6808,6 +7001,9 @@ All of it recomputes from relay data alone, on each of the three relays (relay p
 ```
 
 #### Season Genesis (`2156`), Block 0 of the Pre-Season
+
+Signed before revision 9.27: `halving` and `season-chain-v1` (see
+[Examples not signed again](#examples-not-signed-again-rev-927)).
 
 ```json
 {
@@ -7381,6 +7577,13 @@ record, and its post no `q`.
 ```
 
 ## Open points
+
+- **Revision 9.27 (halving by amount) has no signed example and no relay round-trip.** The printed chain examples
+  are those of `season-chain-v1` ([Examples not signed again](#examples-not-signed-again-rev-927)); the genesis under
+  `season-chain-v2` is printed unsigned. Open as well: the collision check of the tag name `eras` against the NIP
+  repository, which was made for `halving` only; and whether the draft check should also hold the blocks of the
+  earlier eras below their next bound, so that no block passes two bounds (today only the last era is bound, and
+  the pot guard of rule 9 catches the rest).
 
 - **Revision 9.25 (Blockli team matches) prints no example.** Its events are a chess team match's with `blockli` in the
   ladder and lineup `a` and no record `e`; the app's tests check them, no relay round-trip was made.
