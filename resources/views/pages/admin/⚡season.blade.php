@@ -302,6 +302,28 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         return ChainDraft::proposal(HyperMining::GAME, ['weights' => $current->weights, 'groups' => $current->groups, 'shares' => $current->shares, 'daily' => $current->daily] + ChainDraft::current());
     }
 
+    /**
+     * Load the league defaults (ChainDraft::defaults()) into the draft form:
+     * a draft saved before a game joined the defaults overrides them
+     * wholesale, and this is the way back. The genesis message and the
+     * planned Block 0 stay as they stand in the form. Nothing is saved; the
+     * board saves it with the form's button.
+     */
+    public function resetDraft(): void
+    {
+        Gate::authorize('admin');
+
+        if (Seasons::isLive()) {
+            return;
+        }
+
+        $kept = ['block0_at' => (string) ($this->draft['block0_at'] ?? ''), 'message' => (string) ($this->draft['message'] ?? '')];
+        $this->fillDraftForm(ChainDraft::defaults());
+        $this->draft = [...$this->draft, ...$kept];
+        $this->draftError = '';
+        $this->notice = __('The league defaults are filled in; the genesis message and the planned Block 0 are kept. Check them and save the draft.');
+    }
+
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
     public function saveDraft(): void
     {
@@ -819,10 +841,14 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $this->moves = (string) $current->moves;
     }
 
-    /** The saved chain draft (or config), the planned Block 0 in the viewer's time zone. */
-    private function fillDraftForm(): void
+    /**
+     * The saved chain draft (or config), the planned Block 0 in the viewer's time zone; resetDraft() passes the defaults.
+     *
+     * @param  array<string, mixed>|null  $chain  a chain as ChainDraft::current() returns it
+     */
+    private function fillDraftForm(?array $chain = null): void
     {
-        $chain = ChainDraft::current();
+        $chain ??= ChainDraft::current();
         $block0 = $chain['block0_at'] === null ? null : CarbonImmutable::createFromTimestamp($chain['block0_at']);
 
         $this->draft = [
@@ -1092,6 +1118,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 @unless ($draftLocked)
                     <span class="flex flex-wrap items-center gap-3">
                         <button type="submit" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc" data-test="save-draft">{{ __('Save the draft') }}</button>
+                        <button type="button" wire:click="resetDraft" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="reset-draft">{{ __('Reset draft to the league defaults') }}</button>
+                        <span class="text-xs text-ink-3">{{ __('The reset keeps the genesis message and the planned Block 0, and only fills the form: nothing is saved until you save the draft.') }}</span>
                     </span>
                 @endunless
                 @if ($draftError)

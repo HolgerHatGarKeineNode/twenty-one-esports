@@ -4,6 +4,8 @@ use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
 use App\Support\PreSeason;
+use App\Support\SeasonChain\ChainDraft;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\Seasons;
@@ -174,6 +176,33 @@ new #[Title('Block 0 stage')] #[Layout('layouts::app', ['section' => 'admin'])] 
         return ['ok' => true, 'rehearsal' => false];
     }
 
+    /**
+     * What the arming step shows of the draft beyond its supply: the share
+     * of every game group with the games and modes that mine
+     * (ChainDraft::mining()), and every warning of the draft
+     * (ChainDraft::warnings(), the estimator's included), none left out. A
+     * saved draft overrides the league defaults wholesale, so this is where
+     * the board sees a draft that lacks a game before it arms. A forecast
+     * that fails is reported and said, never passed over.
+     *
+     * @return array{rows: list<array{key: string, label: string, share: int|null, games: list<string>}>, warnings: list<string>}
+     */
+    public function signs(): array
+    {
+        $chain = ChainDraft::current();
+        $failed = [];
+
+        try {
+            $estimator = app(ChainOverview::class)->draft()['estimate']['warnings'];
+        } catch (Throwable $exception) {
+            report($exception);
+            $estimator = [];
+            $failed = [__('The forecast could not be computed, so its warnings are missing here. Check the season page before you arm.')];
+        }
+
+        return ['rows' => ChainDraft::mining($chain), 'warnings' => [...ChainDraft::warnings($chain, $estimator), ...$failed]];
+    }
+
     /** The planned end in the board member's time zone. */
     public function seasonEnd(): string
     {
@@ -239,6 +268,22 @@ new #[Title('Block 0 stage')] #[Layout('layouts::app', ['section' => 'admin'])] 
                             <div class="flex justify-between gap-4 border-b border-hairline py-2 last:border-0"><dt class="text-ink-2">{{ $term }}</dt><dd class="m-0 text-right">{{ $value }}</dd></div>
                         @endforeach
                     </dl>
+                    {{-- What mines: the shares and games of the draft as it is saved, and every warning of it. --}}
+                    @php($signs = $this->signs())
+                    <div class="flex flex-col gap-1" data-test="stage-mining">
+                        <b class="text-[13px]">{{ __('Shares and games that mine') }}</b>
+                        <dl class="m-0 flex flex-col text-[13px]">
+                            @foreach ($signs['rows'] as $row)
+                                <div class="flex flex-col gap-0.5 border-b border-hairline py-2 last:border-0" data-test="stage-share-{{ $row['key'] }}">
+                                    <dt class="flex justify-between gap-4"><span>{{ $row['label'] }}</span><span class="tabular-nums" data-test="stage-share-percent">{{ $row['share'] === null ? '–' : $row['share']."\u{00A0}%" }}</span></dt>
+                                    <dd class="m-0 text-xs text-ink-2">{{ $row['games'] === [] ? __('no game with a weight') : implode(', ', $row['games']) }}</dd>
+                                </div>
+                            @endforeach
+                        </dl>
+                    </div>
+                    @foreach ($signs['warnings'] as $warning)
+                        <p class="m-0 rounded-md bg-btc-chip px-3.5 py-2.5 text-[13px] text-btc-hi" data-test="stage-warning">{{ $warning }}</p>
+                    @endforeach
                     <div class="flex flex-col gap-1">
                         <b class="text-[13px]">{{ __('Genesis message, published with Block 0') }}</b>
                         <p class="m-0 text-sm break-words" data-test="stage-message">{{ $message ?? __('not written yet: write it in the chain draft on the season page') }}</p>
