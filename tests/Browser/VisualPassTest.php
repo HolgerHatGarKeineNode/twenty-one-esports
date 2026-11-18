@@ -82,6 +82,10 @@ function visualPassShot(Page $page, string $name): void
 test('every touched page shows its pictures at 1440 and 375, German at 375, with a clean console', function () {
     navWorld();
     config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
+    // Rated chess as a deploy has it (the tests keep it off, phpunit.xml): since the defaults of 2026-11-18 the draft
+    // mines chess, the board games and Hyperbitcoinization only, so with all three closed /mining has no win that pays
+    // and draws no halving bars.
+    config(['esports.chess.rated_queue' => true]);
     app(CasualCups::class)->tick();
     $cup = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
     // A player without a clan or a game: the empty states of /me and the own page show their pictures (P53 part C).
