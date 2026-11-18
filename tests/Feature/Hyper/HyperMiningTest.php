@@ -80,21 +80,20 @@ function hyperTrust(array $ranks = [], array $apart = [], array $anchors = []): 
 }
 
 /**
- * A live season in which Hyperbitcoinization mines: the draft's defaults and the game's proposal (weight 2 per mode,
- * 10 % and 5 a day), with the values given.
+ * A live season in which Hyperbitcoinization mines: the draft's untouched defaults, in which the game is while it is
+ * switched on (weight 1 per mode, 20 % and 5 a day; no saved proposal), with the values given.
  *
  * @param  array<string, mixed>  $parameters
  */
 function hyperMiningSeason(array $parameters = []): Season
 {
     $defaults = ChainDraft::defaults();
-    $proposal = config('season.chain.hyperbitcoinization_proposal');
 
     return openSeason(['parameters' => [
-        'weights' => [...$defaults['weights'], ...$proposal['weights']],
+        'weights' => $defaults['weights'],
         'groups' => $defaults['groups'],
-        'shares' => ['chess' => 60, 'board-games' => 30, 'hyperbitcoinization' => $proposal['share']],
-        'daily' => [...$defaults['daily'], 'hyperbitcoinization' => $proposal['daily']],
+        'shares' => $defaults['shares'],
+        'daily' => $defaults['daily'],
         'pairlimit' => $defaults['pairlimit'],
         'subtree' => $defaults['subtree'],
         'moves' => $defaults['moves'],
@@ -149,13 +148,18 @@ test('without a weight for the game a rated match pins nothing, is signed as bef
         ->and(NostrEvent::query()->where('event_id', $match->result_event_id)->sole()->signed_at)->toBe($match->ended_at->getTimestamp());
 });
 
-test('with a weight a rated free-for-all of trusted players mines one block for its winner alone, which the chain, the readout and the settlement count', function () {
+test('from the untouched defaults, with no saved proposal, a rated free-for-all of trusted players mines one block of 2 100 sats for its winner alone, which the chain, the readout and the settlement count', function () {
     $season = hyperMiningSeason();
     [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create();
 
     $match = hyperWin([$anna, $bert, $carl, $dora]);
     $attestation = hyperAttestation($match);
-    $reward = $season->chainParameters()->rewardPerPlayer(2000, 1);
+    // The defaults as they are, nothing saved: weight 1 pays the base subsidy of era 1.
+    $reward = 2100;
+
+    expect(ChainDraft::stored())->toBeNull()
+        ->and($season->parameters['weights']['hyperbitcoinization/live'])->toBe(1000)
+        ->and($season->parameters['shares'][HyperMining::GAME])->toBe(20);
 
     expect($attestation)->not->toBeNull()
         ->and([$attestation->height, $attestation->reason, $attestation->game, $attestation->mode])->toBe([1, null, 'hyperbitcoinization', 'live'])

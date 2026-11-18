@@ -123,11 +123,12 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     // editions share one share group. User decision 2026-10-11: chess rapid mines from Block 0, and so do
     // the board games while they are switched on (off here, so none of theirs is signed). User decision
     // 2026-11-18: Rocket League and EA Sports FC do not mine at Block 0 (their old values are proposals),
-    // chess has 60 % and the board games 40 %. The ledger fixture is the oracle's frozen genesis and stays
-    // as it is: the engine tests below replay its own parameters.
+    // chess has 50 %, the board games 30 % and Hyperbitcoinization 20 %, each while it is switched on (only
+    // chess here). The ledger fixture is the oracle's frozen genesis and stays as it is: the engine tests
+    // below replay its own parameters.
     expect($season->subsidy)->toBe(2_100)
         ->and(intdiv($season->eraBudget(1), $season->rewardPerPlayer(1000, 1)))->toBe(500)
-        ->and($season->genesis->shares)->toBe(['chess' => 60])
+        ->and($season->genesis->shares)->toBe(['chess' => 50])
         ->and($season->genesis->daily)->toBe(['chess' => 5])
         ->and($season->genesis->groups)->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']])
         ->and($season->genesis->weights)->toBe(['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'chess/rapid' => 1500])
@@ -140,8 +141,8 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     CheckersGame::play();
     $withBoardGames = SeasonParameters::fromDraft(ChainDraft::defaults(), 'pre-season', CarbonImmutable::parse($genesis['genesis_at']))->genesis;
 
-    expect($withBoardGames->shares)->toBe(['chess' => 60, 'board-games' => 40])
-        ->and(array_sum($withBoardGames->shares))->toBe(100)
+    expect($withBoardGames->shares)->toBe(['chess' => 50, 'board-games' => 30])
+        ->and(array_sum($withBoardGames->shares))->toBe(80)
         ->and($withBoardGames->daily)->toBe(['chess' => 5, 'board-games' => 5])
         ->and($withBoardGames->groups['board-games'])->toBe(['blockli', 'nine-mens-morris', 'checkers'])
         ->and(array_diff_key($withBoardGames->weights, $season->genesis->weights))->toBe(['blockli/blitz' => 1000, 'blockli/rapid' => 1500, 'blockli/correspondence' => 2000, 'nine-mens-morris/correspondence' => 2000, 'checkers/correspondence' => 2000]);

@@ -131,14 +131,20 @@ return [
     | off; `moves` counts for chess and the board games. The length is in
     | weeks, eras last `halving_days`.
     |
-    | Chess and the board games mine from Block 0, and nothing else (user
-    | decision 2026-11-18): chess at 60 % and the board games at 40 % of every
-    | era. Rapid is at 1.5x, as its game lasts about 1.5x a blitz game,
-    | correspondence at twice blitz, as chess daily (user decision
-    | 2026-10-11). A board game that is switched off is left out of the draft
-    | (ChainDraft::defaults()), and with all of them off so are their share
-    | and daily limit: the draft then holds chess at 60 % alone and warns
-    | that 40 % of every era cannot be mined.
+    | Chess, the board games and Hyperbitcoinization mine from Block 0, and
+    | nothing else (user decision 2026-11-18): chess at 50 %, the board games
+    | at 30 % and Hyperbitcoinization at 20 % of every era. Rapid is at 1.5x,
+    | as its game lasts about 1.5x a blitz game, correspondence at twice
+    | blitz, as chess daily (user decision 2026-10-11). Hyperbitcoinization
+    | mines one block per rated match for its winner alone, a free-for-all or
+    | a 1v1 between trusted players (NIP rev. 9.26, draft), at weight 1 in
+    | both modes; the game has no ladder event. A game that is switched off
+    | is left out of the draft (ChainDraft::defaults()): a board game's
+    | weight, with all board games off their share and daily limit too, and
+    | with Hyperbitcoinization off (`ESPORTS_HYPER`) its weights, share and
+    | daily limit. The draft then warns about the share of every era that
+    | cannot be mined: 20 % without Hyperbitcoinization, 30 % without the
+    | board games, 50 % without both.
     |
     | Rocket League and both EA Sports FC editions do not mine at Block 0
     | (user decision 2026-11-18). Their weights, shares and daily limits are
@@ -161,14 +167,10 @@ return [
     | nobody decided yet; AoE2 mines only once the board fills them in (or
     | its own) and saves.
     |
-    | hyperbitcoinization_proposal (NIP rev. 9.26, draft; user decision
-    | 2026-11-18): Hyperbitcoinization mines one block per rated match for
-    | its winner alone, a free-for-all or a 1v1 between trusted players, once
-    | the board takes this in for Block 0 or by a parameter change. Without
-    | it the game mines nothing. DRAFT values: a live match runs 14 (two
-    | seats) to 24 (six seats) rounds on average with up to 90 seconds a
-    | turn, several times a blitz game; the weight is capped at the chain's
-    | highest, 2x, as correspondence. The game has no ladder event.
+    | hyperbitcoinization_proposal (NIP rev. 9.26, draft): the game's values
+    | in the defaults (user decision 2026-11-18), for a draft that was saved
+    | or a season that was released while the game was switched off: the
+    | board takes them in for Block 0 or by a parameter change.
     |
     */
 
@@ -186,19 +188,24 @@ return [
             'blockli/correspondence' => 2000,
             'nine-mens-morris/correspondence' => 2000,
             'checkers/correspondence' => 2000,
+            // Hyperbitcoinization from Block 0 (user, 2026-11-18): one block per rated match for its winner, at weight 1.
+            'hyperbitcoinization/live' => 1000,
+            'hyperbitcoinization/correspondence' => 1000,
         ],
         'groups' => [
             'ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'],
             'board-games' => ['blockli', 'nine-mens-morris', 'checkers'],
         ],
-        // Chess and the board games alone from Block 0 (user, 2026-11-18).
+        // Chess, the board games and Hyperbitcoinization from Block 0 (user, 2026-11-18).
         'shares' => [
-            'chess' => 60,
-            'board-games' => 40,
+            'chess' => 50,
+            'board-games' => 30,
+            'hyperbitcoinization' => 20,
         ],
         'daily' => [
             'chess' => 5,
             'board-games' => 5,
+            'hyperbitcoinization' => 5,
         ],
         // Rocket League and EA Sports FC do not mine at Block 0 (user, 2026-11-18): the weights they had, and the
         // shares the board gave them on 2026-10-11, as proposals.
@@ -221,14 +228,13 @@ return [
             'share' => 22,
             'daily' => 5,
         ],
-        // DRAFT values (NIP rev. 9.26, draft; user, 2026-11-18): one block per rated match for its winner, at the
-        // chain's highest weight, a share and a daily limit as the board games had.
+        // The game's values in the defaults (user, 2026-11-18), for a draft or season that lacks it.
         'hyperbitcoinization_proposal' => [
             'weights' => [
-                'hyperbitcoinization/live' => 2000,
-                'hyperbitcoinization/correspondence' => 2000,
+                'hyperbitcoinization/live' => 1000,
+                'hyperbitcoinization/correspondence' => 1000,
             ],
-            'share' => 10,
+            'share' => 20,
             'daily' => 5,
         ],
         'board_games_proposal' => [

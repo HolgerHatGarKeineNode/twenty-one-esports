@@ -8,6 +8,7 @@ use App\Games\GameRegistry;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperMining;
 use App\Support\Rating\RatingSettings;
 use Carbon\CarbonImmutable;
 
@@ -60,7 +61,8 @@ final class ChainDraft
      * that is on no page is signed: the weight of a board game that is
      * switched off is left out, and so are the share group of the board
      * games (plan "Mühle und Dame", P6), its share and its daily limit while
-     * none of them is switched on.
+     * none of them is switched on, and the weights, share and daily limit of
+     * Hyperbitcoinization while it is switched off (user decision 2026-11-18).
      *
      * @return Chain
      */
@@ -69,9 +71,12 @@ final class ChainDraft
         /** @var array{supply: int, subsidy: int, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, weeks: int, halving_days: int, claim_days: int} $chain */
         $chain = config('season.chain');
         $registry = app(GameRegistry::class);
-        $off = fn (string $game): bool => in_array($game, BoardGame::RESERVED_SLUGS, true) && ! $registry->isBoard($game);
+        $off = fn (string $game): bool => (in_array($game, BoardGame::RESERVED_SLUGS, true) && ! $registry->isBoard($game))
+            || ($game === HyperMining::GAME && $registry->find($game) === null);
         $dropped = array_keys(array_filter($chain['groups'], fn (array $games): bool => array_all($games, $off)));
         $chain['groups'] = array_diff_key($chain['groups'], array_flip($dropped));
+        // A game that is its own share key (Hyperbitcoinization) takes its share and daily limit with it.
+        $dropped = [...$dropped, ...array_filter(array_keys($chain['shares'] + $chain['daily']), $off)];
         $chain['weights'] = array_filter($chain['weights'], fn (string $key): bool => ! $off(explode('/', $key, 2)[0]), ARRAY_FILTER_USE_KEY);
         $chain['shares'] = array_diff_key($chain['shares'], array_flip($dropped));
         $chain['daily'] = array_diff_key($chain['daily'], array_flip($dropped));
@@ -199,7 +204,7 @@ final class ChainDraft
         // row without a weight does not mine; the score games start that way and come in only through their proposal.
         foreach (app(GameRegistry::class)->all() as $game) {
             // Proof of Pong (plan "Proof of Pong", P4) mines no block: no row. Hyperbitcoinization has one while it is
-            // switched on (NIP rev. 9.26, draft): without a weight it does not mine, and it starts that way.
+            // switched on (NIP rev. 9.26, draft): without a weight it does not mine.
             if ($game->kind() === GameKind::Arcade) {
                 continue;
             }
@@ -252,8 +257,9 @@ final class ChainDraft
      * 2026-10-11; their proposal is for a draft or season that lacks them.
      * Age of Empires II mines only once the board takes up its proposal, and
      * so do Rocket League and EA Sports FC (both editions as one share
-     * group), which left the defaults on 2026-11-18, and Hyperbitcoinization
-     * (NIP rev. 9.26, draft), which has a row only while it is switched on.
+     * group), which left the defaults on 2026-11-18. Hyperbitcoinization
+     * (NIP rev. 9.26, draft) is in the defaults since 2026-11-18 while it is
+     * switched on; its proposal is for a draft or season from before that.
      */
     public const PROPOSALS = [
         'board-games' => 'season.chain.board_games_proposal',

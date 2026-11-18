@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Season;
+use App\Support\Hyper\HyperMining;
 use App\Support\SeasonChain\ChainDraft;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -55,13 +56,16 @@ class SeasonFactory extends Factory
      * shares the board gave them on 2026-10-11 (32/36/22 and the board
      * games' 10). They left the defaults (user decision 2026-11-18), but
      * the suite proves the chain with their series, so its seasons keep
-     * them; the defaults themselves are tested in ChainDraftTest.
+     * them; the defaults themselves are tested in ChainDefaultsTest.
+     * Hyperbitcoinization, in the defaults since 2026-11-18, has no weight
+     * here: a test season in which it mines says so with its parameters.
      *
      * @return array<string, mixed>
      */
     private static function chain(): array
     {
         $chain = ChainDraft::defaults();
+        $chain['weights'] = array_filter($chain['weights'], fn (string $key): bool => ! str_starts_with($key, HyperMining::GAME.'/'), ARRAY_FILTER_USE_KEY);
         $series = [...config('season.chain.rocket_league_proposal.weights'), ...config('season.chain.ea_sports_fc_proposal.weights')];
         $first = array_slice($chain['weights'], 0, 2, true);
         $boards = isset($chain['shares']['board-games']);
