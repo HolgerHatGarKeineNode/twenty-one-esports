@@ -23,6 +23,7 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Invites\InviteLinks;
+use App\Support\Nostr\NostrKeys;
 use App\Support\StreamBot\PrideNotes;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRunner;
@@ -731,6 +732,9 @@ test('every route renders without console errors, page errors, bad responses or 
     if ($authenticated) {
         $user = User::factory()->create();
         Admin::query()->create(['pubkey' => $user->pubkey]);
+        // On the board as well: the Block 0 stage (admin.season.stage) answers 403 to a plain admin
+        // (tests/Feature/SeasonChain/StageTest), and the sweep reads its console and widths too.
+        config(['esports.board' => [NostrKeys::hexToNpub($user->pubkey)]]);
         test()->actingAs($user);
     }
 
