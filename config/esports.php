@@ -963,7 +963,7 @@ return [
             'thin_trust_share' => 100,
             // New account: created at most this many days before its first block. A week covers "made for the season".
             'new_account_days' => 7,
-            // Undecided counting reports against the player: every single one is worth a look.
+            // Reports against the player that wait for an admin: every single one is worth a look.
             'reports' => 1,
             // The page lists at most this many players, the ones with the most chips first.
             'rows' => 100,

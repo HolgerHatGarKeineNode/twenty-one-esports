@@ -9,9 +9,9 @@ use App\Models\HyperSeat;
 use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
-use App\Models\TrustCountedReport;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
 use App\Models\User;
@@ -131,13 +131,11 @@ function ckForfeit(User $player, float $daysAgo, bool $rated = true): void
         'bot' => true, 'takeover' => HyperSeat::TAKEOVER_FORFEIT, 'left_at' => now()->subSeconds((int) round($daysAgo * 86400))]);
 }
 
-/** A league report against the player that counted in `$season`. */
-function ckReport(Season $season, User $target, ?User $author = null): TrustCountedReport
+/** A league report against the player, signed `$daysAgo` days ago; nobody decided about it yet. */
+function ckReport(User $target, float $daysAgo = 1): NostrEvent
 {
-    $author ??= ckPlayer('Reporter');
-
-    return TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => hash('sha256', 'report-'.$author->id.'-'.$target->id.'-'.$season->id),
-        'author' => $author->pubkey, 'target' => $target->pubkey, 'subtree' => $author->pubkey]);
+    return NostrEvent::fromSigned(SignedEvent::fromInput((new TestSigner)->sign(1984, [['p', $target->pubkey, 'other'], ['L', 'space.einundzwanzig.esports'], ['l', 'multi-account', 'space.einundzwanzig.esports']],
+        'Two accounts, one person.', now()->subSeconds((int) round($daysAgo * 86400))->getTimestamp())));
 }
 
 /**
@@ -190,12 +188,13 @@ function ckArrange(string $case, Season $season, User $ada): void
         'no trust rank, only a refused win' => [ckWin($season, $ada, $xaver, ['reason' => 'not-trusted']), TrustRank::query()->where('pubkey', $ada->pubkey)->delete()],
         'an account seven days older than its first block' => [$ada->forceFill(['created_at' => now()->subDays(9)])->save(), ckWin($season, $ada, $xaver, ['days_ago' => 2]), ckVaried($season, $ada, 3)],
         'an account seven days and an hour older than its first block' => [$ada->forceFill(['created_at' => now()->subDays(9)->subHour()])->save(), ckWin($season, $ada, $xaver, ['days_ago' => 2]), ckVaried($season, $ada, 3)],
-        'one counting report' => [ckVaried($season, $ada, 4), ckReport($season, $ada)],
-        'a dismissed report, one of an excluded author, one of an ended season' => [
+        'one waiting report' => [ckVaried($season, $ada, 4), ckReport($ada), ckReport($xaver)],
+        'a dismissed report, a confirmed one, one of an excluded author, one from before Block 0' => [
             ckVaried($season, $ada, 4),
-            TrustReportDismissal::query()->create(['event_id' => ckReport($season, $ada)->event_id, 'dismissed_by_id' => $xaver->id, 'reason' => 'Same household.']),
-            TrustExclusion::query()->create(['pubkey' => ckReport($season, $ada, $xaver)->author, 'excluded_by_id' => $xaver->id, 'reason' => 'Mass reporting.']),
-            ckReport(Season::factory()->ended()->create(['slug' => 'pre-season']), $ada, ckPlayer('Old reporter')),
+            TrustReportDismissal::query()->create(['event_id' => ckReport($ada)->event_id, 'dismissed_by_id' => $xaver->id, 'reason' => 'Same household.']),
+            TrustReportConfirmation::query()->create(['event_id' => ckReport($ada)->event_id, 'confirmed_by_id' => $xaver->id, 'reason' => 'Checked.']),
+            TrustExclusion::query()->create(['pubkey' => ckReport($ada)->pubkey, 'excluded_by_id' => $xaver->id, 'reason' => 'Mass reporting.']),
+            ckReport($ada, 31),
         ],
     };
 }
@@ -236,7 +235,7 @@ test('a signal shows its chip with the number that triggered it', function (stri
     ['rank 49 after mining', 'no-trust', 'Trust below the minimum now: 49'],
     ['no trust rank after mining', 'no-trust', 'Trust below the minimum now: 0'],
     ['an account seven days older than its first block', 'new-account', 'New account: 7 days before its first block'],
-    ['one counting report', 'reports', 'Open reports: 1'],
+    ['one waiting report', 'reports', 'Open reports: 1'],
 ]);
 
 test('just under its threshold a signal shows no chip', function (string $case, string $signal) {
@@ -259,7 +258,7 @@ test('just under its threshold a signal shows no chip', function (string $case, 
     ['rank 50 after mining', 'no-trust'],
     ['no trust rank, only a refused win', 'no-trust'],
     ['an account seven days and an hour older than its first block', 'new-account'],
-    ['a dismissed report, one of an excluded author, one of an ended season', 'reports'],
+    ['a dismissed report, a confirmed one, one of an excluded author, one from before Block 0', 'reports'],
 ]);
 
 test('mutual wins show on both rows with the partner, and the opponents list counts the blocks each way', function () {
@@ -382,7 +381,7 @@ test('the page costs the same number of queries for 5 and for 50 players', funct
             ckWin($season, $player, $rival);
             ckWin($season, $rival, $player);
             ckForfeit($player, 1);
-            ckReport($season, $player, $rival);
+            ckReport($player);
         }
     };
     $queries = function () use ($admin): int {
