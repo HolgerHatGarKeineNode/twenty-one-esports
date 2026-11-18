@@ -13,23 +13,33 @@ use App\Jobs\RunTrustJob;
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\Season;
+use App\Models\SeasonAttestation;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessQueue;
 use App\Support\Engagement\HomeBoard;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\Seasons;
+use App\Support\SeasonChain\SeasonSettlement;
+use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\BlockliOn;
+use Tests\Support\CheckersGame;
+use Tests\Support\HyperOn;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
 const RELEASE_MESSAGE = '26/Sep/2026 TWENTY ONE Esports: every fair win is a block';
@@ -116,6 +126,85 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
 
     // Label, genesis, admin list, announcement and the thirteen ladders (chess rapid among them).
     Queue::assertPushed(PublishNostrEvent::class, 17);
+});
+
+test('a release from the untouched defaults signs them; a rated chess blitz win then mines block 1 at 2 100 sats, which the readout and the settlement review count', function () {
+    // Production's switches: the board games and Hyperbitcoinization on. Nothing of the draft is edited but the
+    // genesis message, which a release cannot do without.
+    BlockliOn::play();
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    HyperOn::play();
+    saveChainDraft(['message' => RELEASE_MESSAGE]);
+
+    expect(array_diff_key(ChainDraft::current(), ['message' => null]))->toBe(array_diff_key(ChainDraft::defaults(), ['message' => null]));
+
+    $season = releaseAs($this->board, $this->boardSigner);
+    $genesis = SignedEvent::fromInput(NostrEvent::query()->where('kind', SeasonChains::GENESIS)->sole()->payload());
+
+    expect([$genesis->tag('supply'), $genesis->tag('subsidy'), $genesis->tag('halving'), $genesis->tag('claim')])->toBe(['2100000', '2100', '2419200', '7776000'])
+        ->and((int) $genesis->tag('ends') - $genesis->createdAt)->toBeGreaterThan(24 * 604800 - 3600)->toBeLessThanOrEqual(24 * 604800)
+        ->and($genesis->tagsNamed('share'))->toBe([['chess', '50'], ['board-games', '30'], ['hyperbitcoinization', '20']])
+        ->and($genesis->tagsNamed('daily'))->toBe([['chess', '5'], ['board-games', '5'], ['hyperbitcoinization', '5']])
+        ->and($genesis->tagsNamed('weight'))->toContain(['chess/blitz', '1'], ['hyperbitcoinization/live', '1'], ['hyperbitcoinization/correspondence', '1'])
+        ->and([$genesis->tagsNamed('pairlimit'), $genesis->tag('subtree'), $genesis->tag('moves')])->toBe([[['1', '3']], '90', '20'])
+        ->and($season->parameters['shares'])->toBe(['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20])
+        ->and($season->minimum_trust)->toBe(50);
+
+    // Two trusted players who list each other meet in the rated blitz queue of the released season.
+    config(['esports.chess.rated_queue' => true]);
+    app()->instance(TrustFacts::class, new class implements TrustFacts
+    {
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function at(array $players, array $gatekeepers): array
+        {
+            $all = array_values(array_unique([...$players, ...$gatekeepers]));
+
+            return [
+                'key' => str_repeat('7', 64),
+                'trust' => array_fill_keys($all, 100),
+                'anchors' => [],
+                'assertions' => array_fill_keys($all, str_repeat('a', 64)),
+                'lists' => array_fill_keys($all, str_repeat('b', 64)),
+                'connected' => true,
+            ];
+        }
+    });
+
+    [$a, $b] = User::factory()->count(2)->create();
+    $queue = app(ChessQueue::class);
+    $queue->join($a, 'blitz', rated: true);
+    $game = $queue->join($b, 'blitz', rated: true);
+    $service = app(ChessGameService::class);
+
+    // 20 full moves of a closed Ruy Lopez (Breyer), enough for consensus rule 2; then Black resigns.
+    foreach (['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6', 'e1g1', 'f8e7', 'f1e1', 'b7b5', 'a4b3', 'd7d6', 'c2c3', 'e8g8', 'h2h3', 'c6b8', 'd2d4', 'b8d7',
+        'b1d2', 'c8b7', 'b3c2', 'f8e8', 'd2f1', 'e7f8', 'f1g3', 'g7g6', 'a2a4', 'c7c5', 'd4d5', 'c5c4', 'c1g5', 'h7h6', 'g5e3', 'd7c5', 'd1d2', 'h6h5', 'e3g5', 'f8e7'] as $index => $uci) {
+        $game = $service->move($game->refresh(), $index % 2 === 0 ? $game->white : $game->black, $uci);
+    }
+
+    $service->resign($game->refresh(), $game->black);
+    $attestation = SeasonAttestation::query()->sole();
+    $winner = $game->white->pubkey;
+
+    expect($attestation->only(['height', 'reason', 'game', 'mode', 'era', 'reward_per_player', 'reward']))
+        ->toBe(['height' => 1, 'reason' => null, 'game' => 'chess', 'mode' => 'blitz', 'era' => 1, 'reward_per_player' => 2100, 'reward' => 2100]);
+
+    $readout = app(SeasonChains::class)->readout($season);
+
+    expect($readout['mined'])->toBe(2100)
+        ->and($readout['mined_by_game_and_era'])->toBe(['chess' => [1 => 2100]])
+        ->and(array_map(fn (array $block): array => [$block['weight_key'], $block['reward'], $block['winners']], $readout['blocks']))->toBe([['chess/blitz', 2100, 1]])
+        ->and($readout['stored']['miners'])->toBe([$winner => ['blocks' => 1, 'sats' => 2100]]);
+
+    $review = app(SeasonSettlement::class)->review($season);
+
+    expect([$review['blocks'], $review['mined'], $review['voided'], $review['payout'], $review['mismatch']])->toBe([1, 2100, 0, 2100, null])
+        ->and(array_map(fn (array $row): array => [$row['pubkey'], $row['blocks'], $row['mined'], $row['payout'], $row['heights']], $review['rows']))->toBe([[$winner, 1, 2100, 2100, [1]]]);
 });
 
 test('Block 0 is refused for anyone not on the board list, even an admin of the admins table', function () {
