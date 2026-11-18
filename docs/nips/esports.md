@@ -204,8 +204,8 @@ with a `weight` for a game it has no rules for, rather than skip its blocks.
 
 Hyperbitcoinization mines (user, 2026-11-18: from Block 0 if it is solid, otherwise by a parameter change in the
 season). No new kind; two new tags (`listed`, `conquests`) and a `block` tag in the Hyperbitcoinization `2154`. Checked against the
-app's tests, not on a public relay, and without printed signed examples. Off by default: the chain defaults carry no
-weight for the game.
+app's tests, not on a public relay, and without printed signed examples. The league's chain defaults carry a weight
+for the game while the league has switched it on, and none otherwise.
 
 - **One block per match, for the winner alone** ([Table blocks](#table-blocks-rev-926-draft)): a rated free-for-all
   or 1v1 between players, begun and ended in the season, outside a tournament. No block per round, none for a bot,
@@ -225,8 +225,10 @@ weight for the game.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
 - **Defaults of the league's chain draft** (not a protocol rule): Rocket League and both EA Sports FC editions do not
-  mine at Block 0; chess has a share of 60 % and the board games 40 %. The league proposes weight `2` for both modes
-  of Hyperbitcoinization, a share of 10 % and 5 blocks a day; nothing of it is in force until the board saves it.
+  mine at Block 0; chess has a share of 50 %, the board games 30 % and Hyperbitcoinization 20 %, each only while the
+  league has switched the game on. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
+  season that began without the game is offered the same values as a proposal; nothing of a proposal is in force
+  until the board saves it.
 
 ### Changelog of revision 9.25 (2026-11-06)
 
