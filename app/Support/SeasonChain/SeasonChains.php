@@ -923,9 +923,10 @@ final class SeasonChains
      * winner (HyperMining::winner()) against every other seat, or null when
      * nobody won alone. Trust ranks, anchors, the pairs that list each other
      * and the clans are those pinned at the match's start; a match without
-     * a pin has none, so rule 1 refuses it. `forfeit` when no other seat
-     * played to the end (HyperMining::wonByForfeit()). No move count: rule
-     * 2's minimum is calibrated for chess and the board games.
+     * a pin has none, so rule 1 refuses it as `not-pinned`. `forfeit` when
+     * any seat forfeited (HyperMining::hadForfeit()). No move count: rule
+     * 2's minimum is calibrated for chess and the board games; a table asks
+     * for a conquest of the winner instead (HyperMining::conquests()).
      */
     private function hyperCandidate(HyperMatch $match, CarbonImmutable $attestedAt): ?Candidate
     {
@@ -981,7 +982,7 @@ final class SeasonChains
             HyperMining::GAME,
             HyperMining::GAME.'/'.$match->mode,
             $attestedAt,
-            HyperMining::wonByForfeit($match, $seat) ? Resolution::Forfeit : Resolution::Admin,
+            HyperMining::hadForfeit($match) ? Resolution::Forfeit : Resolution::Admin,
             null,
             [$winner],
             $losers,
@@ -993,7 +994,7 @@ final class SeasonChains
             $clans,
             $anchors,
             null,
-            ['connected' => array_values(array_intersect($losers, $connected))],
+            ['connected' => array_values(array_intersect($losers, $connected)), 'pinned' => $pin !== null, 'conquests' => HyperMining::conquests($match, $seat)],
         );
     }
 
@@ -1002,7 +1003,7 @@ final class SeasonChains
      * its result, then the gate pinned at the start (`trust`, one `gate` row
      * per seat without a list id, one `listed` row per loser the winner and
      * they list each other, with the two list events), the pinned `clan`
-     * rows and the `block` tag.
+     * rows, the winner's `conquests` and the `block` tag.
      *
      * @param  list<string>|null  $block
      * @return list<list<string>>
@@ -1035,6 +1036,8 @@ final class SeasonChains
                     $tags[] = ['clan', $pubkey, $clan];
                 }
             }
+
+            $tags[] = ['conquests', $candidate->winners[0], (string) ($candidate->table['conquests'] ?? 0)];
         }
 
         if ($block !== null) {

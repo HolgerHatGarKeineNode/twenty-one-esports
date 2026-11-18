@@ -203,7 +203,7 @@ with a `weight` for a game it has no rules for, rather than skip its blocks.
 ### Changelog of revision 9.26 (2026-11-18, draft)
 
 Hyperbitcoinization mines (user, 2026-11-18: from Block 0 if it is solid, otherwise by a parameter change in the
-season). No new kind; one new tag (`listed`) and a `block` tag in the Hyperbitcoinization `2154`. Checked against the
+season). No new kind; two new tags (`listed`, `conquests`) and a `block` tag in the Hyperbitcoinization `2154`. Checked against the
 app's tests, not on a public relay, and without printed signed examples. Off by default: the chain defaults carry no
 weight for the game.
 
@@ -216,10 +216,12 @@ weight for the game.
   table of two and at a table of six, so more seats never open a fresh pairing.
 - **Pinned at the start.** Every seat's trust rank and anchor, the pairs of seats that list each other as opponents,
   and every seat's clan are pinned when the match starts, and only while the game has a weight then. A match without
-  that pin never mines. Rated Hyperbitcoinization itself has no trust gate (rev. 9.24) and gets none: a table that
+  that pin never mines, with its own reason (`not-pinned`). Rated Hyperbitcoinization itself has no trust gate (rev. 9.24) and gets none: a table that
   fails a rule plays for its points or Elo and mines nothing.
-- **Forfeits.** A forfeiter never wins. A win is a `forfeit` for rule 2 when no other seat played to the end; a
-  table where at least one loser stayed mines for the winner, the forfeiters counted as losers.
+- **Only a fully played match mines** (user, 2026-11-18). A forfeiter never wins, and a forfeit of any seat, by
+  leaving or by letting its turns run out, makes the match a `forfeit` for rule 2: it mines nothing, at a table of two
+  as at a table of six, also when other losers stayed. The rating of the match is untouched. And the winner took at
+  least one territory in the match (`no-conquest`): a match of passed turns that the round limit decides mines nothing.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
 - **Defaults of the league's chain draft** (not a protocol rule): Rocket League and both EA Sports FC editions do not
@@ -1665,10 +1667,11 @@ and before `alt` it carries, in this order: `["trust", <trust key>, "<minimum>"]
 "<rank>", "<assertion id>", ""]` per seat that was pinned, the winner first, then the losers in seat order (the list
 id is empty: a table has no two gatekeepers); one `["listed", "<pubkey>", "<pubkey>", "<list id>", "<list id>"]` per
 loser the winner and they list each other as opponents, with the newest opponent list of each of the two at the
-start; one `["clan", "<pubkey>", "<clan address>"]` per seat that was in a clan at the start; and
+start; one `["clan", "<pubkey>", "<clan address>"]` per seat that was in a clan at the start;
+`["conquests", "<winner's pubkey>", "<count>"]`, the territories the winner took in the match; and
 `["block", "<height>" | "", "<previous block's id>"]`. A match without a single winner (below) is attested without
-`trust`, `gate`, `listed`, `clan` and `block`; a match that was not pinned at its start has a `block` with an empty
-height and none of the four. A team match, a tournament match and every match while the game has no
+`trust`, `gate`, `listed`, `clan`, `conquests` and `block`; a match that was not pinned at its start has a `block`
+with an empty height and none of the five. A team match, a tournament match and every match while the game has no
 weight keep the result of rev. 9.24 unchanged. The league signs one `2154` per match in either case, never both.
 
 **Tournaments.** A Hyperbitcoinization tournament is an ordinary `31923` and is played as free-for-all tables of 3 to 6
@@ -3117,17 +3120,20 @@ match that ends after the season ended has no season to be attested in.
 trust rank, the assertion and the anchor (a player barred under the fair-play rules is not pinned and so counts as not
 trusted), for every pair of seats whether each one's newest opponent list names the other, and every seat's clan.
 These are the `gate`, `listed` and `clan` rows of the attestation. A match that started while the game had no weight
-has no pin and fails rule 1. The pin refuses no match: rated play stays as open as in rev. 9.24.
+has no pin and fails rule 1 with its own reason (`not-pinned`). The pin refuses no match: rated play stays as open as in rev. 9.24.
 
 Rules 1 to 4, 7 and 8 read as follows; rules 0, 5, 6 and 9 hold as above, and the reason is again the first rule the
 candidate fails.
 
-1. **Trusted and connected, every seat.** The winner and every loser are at or above the trust minimum in their `gate`
+1. **Pinned, trusted and connected, every seat.** The match was pinned at its start (`not-pinned`: the attestation
+   has no `trust` row). The winner and every loser are at or above the trust minimum in their `gate`
    rows (`not-trusted`), and the winner has a `listed` row with every loser (`not-connected`).
-2. **A real win.** At least one other seat played to the end. If every other seat forfeited, the win is a `forfeit`
-   and mines nothing. A forfeiter is placed last and is never the winner; a loser who forfeited while another loser
-   stayed is a loser like any other, with every rule read against them. There is no minimum length: `moves` counts
-   for chess and the board games only.
+2. **A fully played match.** Every seat played to the end: if any seat forfeited, by leaving or by letting its turns
+   run out, the match is a `forfeit` and mines nothing, whether or not other losers stayed. A forfeiter is placed
+   last and is never the winner; the match stays rated and the forfeiter keeps the loss. And the winner took at
+   least one territory: a `conquests` count of 0 mines nothing (`no-conquest`). The count is the territories taken by
+   the actions the winner sent themselves, an attack or a 51% attack; a turn the clock ended takes none. There is no
+   minimum length: `moves` counts for chess and the board games only.
 3. **Not the same clan.** No loser shares the winner's clan of the start (`same-clan`).
 4. **Pairing limit per day.** For every loser, the pairing of the winner and that loser, per game and whoever of the
    two won, has fewer blocks on the UTC day than `pairlimit` allows (`pairing-daily-limit`). A block of a table counts
@@ -3141,7 +3147,8 @@ Rule 5 counts the block for the winner alone, rule 9 for the share key `hyperbit
 subsidy of the era times the `weight`, for one player.
 
 A reader recomputes every table rule from the attestation alone: its `place` and `forfeit` rows give the winner, the
-losers and whether the win is a forfeit; its `gate`, `listed` and `clan` rows give rules 1, 3 and 7 (the anchor of a seat is in the assertion its `gate`
+losers and whether the match had a forfeit; its `conquests` row gives the rest of rule 2, which rests on the league's
+word as the match's log is not published; its `gate`, `listed` and `clan` rows give rules 1, 3 and 7 (the anchor of a seat is in the assertion its `gate`
 row names); the earlier blocks
 give rules 4, 5, 8 and 9. What it cannot check is that the pin was taken at the start and not later: that rests on
 the league's word, as the pin of every other game does.

@@ -3,6 +3,7 @@
 namespace App\Support\Hyper;
 
 use App\Models\ClanMember;
+use App\Models\HyperAction;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\User;
@@ -35,6 +36,10 @@ use Throwable;
  *
  * The pin never refuses a match: rated play is as open as before, a table
  * that fails a rule plays for points or Elo and mines nothing.
+ *
+ * Only a fully played match mines (user, 2026-11-18): a forfeit at the
+ * table, by any seat, leaves it without a block ({@see hadForfeit()}), and
+ * so does a winner who conquered nothing ({@see conquests()}).
  *
  * @phpstan-type Pin array{trust_key: string, minimum: int, players: array<string, array{rank: int, assertion: ?string, anchor: array{0: string, 1: int}|null}>, pairs: list<array{0: string, 1: string, 2: string, 3: string}>, clans: array<string, string>}
  */
@@ -125,13 +130,47 @@ final class HyperMining
     }
 
     /**
-     * The win is a forfeit for the chain (consensus rule 2) when no other
-     * seat played to the end: every opponent left or let their turns run
-     * out, so the winner beat nobody. A seat that forfeits is placed last
-     * and never wins; one that stays is a loser like any other.
+     * The match is a forfeit for the chain (consensus rule 2) when any seat
+     * forfeited, by leaving or by letting its turns run out: only a match
+     * every seat played to the end mines, at a table of two as at a table of
+     * six. The rating is not touched: the match stays rated, the forfeiter
+     * keeps the loss.
      */
-    public static function wonByForfeit(HyperMatch $match, HyperSeat $winner): bool
+    public static function hadForfeit(HyperMatch $match): bool
     {
-        return ! $match->seats->contains(fn (HyperSeat $seat): bool => $seat->seat !== $winner->seat && ! HyperSeason::forfeited($seat));
+        return $match->seats->contains(HyperSeason::forfeited(...));
+    }
+
+    /**
+     * The territories the winner took in the match, read from its action
+     * log: the rules core keeps no count beyond the turn (the seat's
+     * `conquered` starts again every turn), but every action is stored with
+     * its events. Counted are the `territory_conquered` events of the
+     * actions the seat's player sent, and a 51%-Attacke that took its target
+     * with a lone unit (the core then emits `card_played` alone). A turn the
+     * timer ended conquers nothing.
+     */
+    public static function conquests(HyperMatch $match, HyperSeat $winner): int
+    {
+        $conquests = 0;
+        $actions = HyperAction::query()->where('hyper_match_id', $match->id)->where('seat', $winner->seat)->where('source', HyperAction::PLAYER)->orderBy('ply')->get(['id', 'events']);
+
+        foreach ($actions as $action) {
+            $taken = 0;
+            $card = 0;
+
+            foreach ($action->events as $event) {
+                if (($event['seat'] ?? null) !== $winner->seat) {
+                    continue;
+                }
+
+                $taken += ($event['type'] ?? null) === 'territory_conquered' ? 1 : 0;
+                $card += ($event['type'] ?? null) === 'card_played' && ($event['card'] ?? null) === 'attack51' ? 1 : 0;
+            }
+
+            $conquests += max($taken, $card);
+        }
+
+        return $conquests;
     }
 }

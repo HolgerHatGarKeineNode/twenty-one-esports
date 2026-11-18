@@ -26,8 +26,9 @@ use Carbon\CarbonImmutable;
  * A table candidate (the winner of a match of 2 to 6 seats, NIP rev. 9.26)
  * is checked as a versus candidate against every loser: it mines only if
  * the winner would have mined against each of them one by one. Rule 1 needs
- * every seat trusted and the winner and each loser listing each other, rule
- * 3 no loser in the winner's clan, rules 4 and 8 every pairing of the winner
+ * the match pinned at its start, every seat trusted and the winner and each
+ * loser listing each other, rule 2 no forfeit at the table and a conquest
+ * of the winner, rule 3 no loser in the winner's clan, rules 4 and 8 every pairing of the winner
  * and a loser below its limit (ChainState), rule 7 no loser in the winner's
  * anchor subtree. One failing pair fails the table.
  */
@@ -220,12 +221,18 @@ final class ConsensusRules
 
     /**
      * 1. Every rated player at or above the trust minimum; the two players or
-     * gatekeepers list each other.
+     * gatekeepers list each other. A table that was not pinned at its start
+     * fails with its own reason.
      *
      * @return array{0: string, 1: ?string}|null
      */
     private function trustedAndConnected(Candidate $candidate): ?array
     {
+        // A table that started while the game had no weight pinned nothing: it has no ranks to read.
+        if ($candidate->isTable() && ($candidate->table['pinned'] ?? true) === false) {
+            return ['not-pinned', null];
+        }
+
         foreach ($candidate->players() as $player) {
             if (($candidate->trust[$player] ?? 0) < $this->minimumTrust) {
                 return ['not-trusted', $player];
@@ -254,7 +261,8 @@ final class ConsensusRules
      * 2. A forfeit never mines; a chess game needs at least `moves` full
      * moves (which also excludes a resignation before move 10), and so does
      * a board game played on the league server (NIP rev. 9.13): every
-     * candidate that counts its moves.
+     * candidate that counts its moves. A table (NIP rev. 9.26) is a forfeit
+     * when any seat forfeited, and needs a conquest of its winner.
      *
      * @return array{0: string, 1: ?string}|null
      */
@@ -262,6 +270,11 @@ final class ConsensusRules
     {
         if ($candidate->resolution === Resolution::Forfeit) {
             return ['forfeit', null];
+        }
+
+        // A table has no move count: its winner took at least one territory (a match of passed turns mines nothing).
+        if ($candidate->isTable() && ($candidate->table['conquests'] ?? 0) < 1) {
+            return ['no-conquest', null];
         }
 
         if (($candidate->game === self::Chess || $candidate->moves !== null) && ($candidate->moves ?? 0) < $parameters->moves) {

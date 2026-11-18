@@ -27,10 +27,11 @@ use Carbon\CarbonImmutable;
  * other seat a loser. It mines only if the winner would have mined against
  * each loser one by one, so rules 1, 3, 4, 7 and 8 read every pair of the
  * winner and a loser ({@see pairingKeys()}). Its `table` facts name the
- * losers the winner and they list each other, pinned at the match's start.
+ * losers the winner and they list each other, pinned at the match's start,
+ * whether the match was pinned at all, and the territories the winner took.
  *
  * @phpstan-type Solo array{start: string, end: string, achieved_at: string, source: string, verified: bool, entrants: list<string>, clans?: array<string, list<string>>}
- * @phpstan-type Table array{connected: list<string>}
+ * @phpstan-type Table array{connected: list<string>, pinned?: bool, conquests?: int}
  */
 final class Candidate
 {

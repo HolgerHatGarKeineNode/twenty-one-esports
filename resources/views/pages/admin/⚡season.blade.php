@@ -1047,7 +1047,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                 'daily' => (int) collect($proposal['daily'])->first(),
                                 'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
                             ]) }}</p>
-                            <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player. Team matches, tournament matches and matches with a bot do not mine.') }}</p>
+                            <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player, played to the end by every seat, and the winner conquered at least one territory. Team matches, tournament matches, matches with a bot and matches with a forfeit do not mine.') }}</p>
                             <span><button type="button" wire:click="fillProposal('hyperbitcoinization')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-hyperbitcoinization-proposal">{{ __('Fill in the proposal') }}</button></span>
                         </div>
                     @endif
@@ -1312,7 +1312,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             'daily' => (int) collect($proposal['daily'])->first(),
                             'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
                         ]) }}</p>
-                        <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player. Team matches, tournament matches and matches with a bot do not mine.') }}</p>
+                        <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player, played to the end by every seat, and the winner conquered at least one territory. Team matches, tournament matches, matches with a bot and matches with a forfeit do not mine.') }}</p>
                         <span><button type="button" wire:click="fillHyperChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-hyperbitcoinization-change">{{ __('Fill in the proposal') }}</button></span>
                     </div>
                 @endif

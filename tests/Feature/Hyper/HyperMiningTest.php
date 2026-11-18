@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\TournamentFormat;
 use App\Models\AccountLink;
 use App\Models\Clan;
 use App\Models\HyperMatch;
@@ -246,7 +247,7 @@ test('a table that fails a consensus rule against one seat is attested without a
         $match->forceFill(['gate_at_start' => null])->save();
 
         return HyperOn::finishTable($match, [0, 1, 2]);
-    }, 'not-trusted'],
+    }, 'not-pinned'],
     'a loser the winner has not added as an opponent' => [function (User $anna, User $bert, User $carl): HyperMatch {
         hyperTrust(apart: [[$anna, $carl]]);
 
@@ -302,9 +303,9 @@ test('a table that fails a consensus rule against one seat is attested without a
     }, 'forfeit'],
 ]);
 
-test('a 1v1 whose loser forfeited mines nothing; a free-for-all in which one of two losers forfeited still mines for the winner, never for the forfeiter', function () {
+test('a forfeit at the table leaves the match without a block, in a 1v1 as in a free-for-all of four with one loser gone, and the match stays rated', function () {
     hyperMiningSeason();
-    [$anna, $bert, $carl, $dora, $emil] = User::factory()->count(5)->create();
+    [$anna, $bert, $carl, $dora, $emil, $fritz] = User::factory()->count(6)->create();
 
     $duel = HyperOn::versus($anna, $bert);
     app(HyperMatches::class)->leave($duel, $bert);
@@ -312,21 +313,54 @@ test('a 1v1 whose loser forfeited mines nothing; a free-for-all in which one of 
 
     expect([hyperAttestation($duel)?->height, hyperAttestation($duel)?->reason])->toBe([null, 'forfeit']);
 
-    $table = app(HyperMatches::class)->create([['user' => $carl], ['user' => $dora], ['user' => $emil]], seed: 7);
-    app(HyperMatches::class)->leave($table, $emil);
-    $table = HyperOn::finishTable($table->refresh(), [0, 1, 2]);
+    // Dora and Emil play to the end; Fritz alone leaves.
+    $table = app(HyperMatches::class)->create([['user' => $carl], ['user' => $dora], ['user' => $emil], ['user' => $fritz]], seed: 7);
+    app(HyperMatches::class)->leave($table, $fritz);
+    $table = HyperOn::finishTable($table->refresh(), [0, 1, 2, 3]);
 
-    expect([hyperAttestation($table)?->height, hyperAttestation($table)?->candidate['winners']])->toBe([1, [$carl->pubkey]])
-        ->and(hyperAttestation($table)?->candidate['losers'])->toBe([$dora->pubkey, $emil->pubkey]);
+    expect([hyperAttestation($table)?->height, hyperAttestation($table)?->reason, hyperAttestation($table)?->reward])->toBe([null, 'forfeit', 0])
+        ->and(hyperAttestation($table)?->candidate['winners'])->toBe([$carl->pubkey])
+        ->and(hyperAttestation($table)?->candidate['losers'])->toBe([$dora->pubkey, $emil->pubkey, $fritz->pubkey])
+        ->and($table->rated)->toBeTrue()
+        ->and($table->seats->sortBy('seat')->pluck('place')->all())->toBe([1, 2, 3, 4])
+        ->and(SeasonAttestation::query()->whereNotNull('height')->count())->toBe(0);
 
     // The bot that plays a forfeited seat on wins: the best seat that stayed holds place 1, but won nothing.
     $table->load('seats.user');
 
     expect(HyperMining::winner($table)?->user?->id)->toBe($carl->id)
-        ->and(HyperMining::winner($table->forceFill(['winner_seat' => 2])))->toBeNull();
+        ->and(HyperMining::winner($table->forceFill(['winner_seat' => 3])))->toBeNull();
 });
 
-test('a match that cannot mine is left to the result as before: a bot seat, a team match, a match begun before Block 0 or ended after the season', function () {
+test('a duel in which both only end their turns until the round limit mines nothing for its winner; a duel won by a conquest mines', function () {
+    hyperMiningSeason();
+    [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create();
+    $players = [$anna, $bert];
+
+    $passed = app(HyperMatches::class)->create([['user' => $anna], ['user' => $bert]], limit: 12, seed: 7);
+
+    for ($turn = 0; $turn < 24 && $passed->status->value !== 'finished'; $turn++) {
+        app(HyperMatches::class)->act($passed, $players[$passed->current_seat], ['type' => 'end_turn']);
+        $passed->refresh();
+    }
+
+    $winner = HyperMining::winner($passed->load('seats.user'))?->user;
+
+    expect($passed->status->value)->toBe('finished')
+        ->and($winner)->not->toBeNull()
+        ->and($passed->seats->contains(fn ($seat): bool => $seat->takeover !== null))->toBeFalse()
+        ->and([hyperAttestation($passed)?->height, hyperAttestation($passed)?->reason, hyperAttestation($passed)?->reward])->toBe([null, 'no-conquest', 0])
+        ->and(hyperAttestation($passed)?->candidate['table']['conquests'])->toBe(0)
+        ->and(collect(hyperResultTags($passed))->where(0, 'conquests')->values()->all())->toBe([['conquests', $winner->pubkey, '0']]);
+
+    $conquered = hyperWin([$carl, $dora]);
+
+    expect([hyperAttestation($conquered)?->height, hyperAttestation($conquered)?->reason])->toBe([1, null])
+        ->and(hyperAttestation($conquered)?->candidate['table']['conquests'])->toBe(1)
+        ->and(collect(hyperResultTags($conquered))->where(0, 'conquests')->values()->all())->toBe([['conquests', $carl->pubkey, '1']]);
+});
+
+test('a match that cannot mine is left to the result as before: a bot seat, a team match, a tournament table, a match begun before Block 0 or ended after the season', function () {
     [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create();
 
     $before = HyperOn::versus($anna, $bert);
@@ -334,6 +368,11 @@ test('a match that cannot mine is left to the result as before: a bot seat, a te
     $before = HyperOn::finishTable($before, [0, 1]);
     $bots = HyperOn::finishTable(HyperOn::versus($anna, $bert, bots: 1), [0, 1, 2]);
     $teams = HyperOn::finishTable(HyperOn::teams(Clan::factory()->create(), Clan::factory()->create(), $anna, $bert, $carl, $dora), [0, 1, 2, 3]);
+    // A free-for-all table of a tournament, every seat a player, in the season that mines.
+    $cup = HyperOn::tournament(4, TournamentFormat::FreeForAll, ['heatSize' => 4, 'heatAdvance' => 1]);
+    $table = HyperMatch::query()->whereIn('tournament_match_id', $cup->matches()->pluck('id'))->sole();
+    $pinned = $table->gate_at_start;
+    $table = HyperOn::finishTable($table, [0, 1, 2, 3]);
     $late = HyperOn::ending(HyperOn::versus($carl, $dora), winner: 0, runnerUp: 1);
 
     // The season ended while the last match was still played (its turn clock set on, so the turn itself is in time).
@@ -343,9 +382,10 @@ test('a match that cannot mine is left to the result as before: a bot seat, a te
 
     expect([$before->rated, $bots->rated, $teams->gate_at_start, $late->rated])->toBe([false, false, null, true])
         ->and($late->gate_at_start)->not->toBeNull()
-        ->and(array_map(HyperMining::eligible(...), [$before, $bots, $teams, $late]))->toBe([false, false, false, false])
+        ->and([$table->rated, $table->season, $table->seats->whereNotNull('user_id')->count(), $pinned])->toBe([true, $season->slug, 4, null])
+        ->and(array_map(HyperMining::eligible(...), [$before, $bots, $teams, $table, $late]))->toBe([false, false, false, false, false])
         // Asked directly, without the guard around the call at the end of a match: no row and no error.
-        ->and(array_map(fn (HyperMatch $match): ?SeasonAttestation => app(SeasonChains::class)->attestHyperMatch($match->id), [$before, $bots, $teams, $late]))->toBe([null, null, null, null])
+        ->and(array_map(fn (HyperMatch $match): ?SeasonAttestation => app(SeasonChains::class)->attestHyperMatch($match->id), [$before, $bots, $teams, $table, $late]))->toBe([null, null, null, null, null])
         ->and(SeasonAttestation::query()->count())->toBe(0)
         ->and(NostrEvent::query()->where('kind', SeasonChains::ATTESTATION)->get()->flatMap(fn (NostrEvent $event): array => array_column($event->payload()['tags'], 0))->all())->not->toContain('block');
 });
