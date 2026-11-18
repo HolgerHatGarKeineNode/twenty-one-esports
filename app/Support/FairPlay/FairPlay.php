@@ -3,6 +3,7 @@
 namespace App\Support\FairPlay;
 
 use App\Models\AccountLink;
+use App\Models\FairPlayBar;
 use App\Models\FalseReport;
 use App\Models\HyperSeat;
 use App\Models\SeriesMatch;
@@ -21,6 +22,9 @@ use stdClass;
  * - a **linked** account: an admin linked it to the main account of the same
  *   person ({@see AccountLinks}); barred until it is unlinked. It also wins
  *   no prize (PayoutPlan skips it).
+ * - a player an admin **barred** by hand ({@see Bars}), until the end the
+ *   admin set or until the bar is lifted. The reason is internal: the player
+ *   reads only that the league locked rated play and until when.
  * - a **locked** player: `fair_play.false_reports` confirmed false reports
  *   ({@see FalseReport}) within `fair_play.window_days` days of each other
  *   bar the player for `fair_play.lock_days` days from the last of them.
@@ -35,7 +39,7 @@ use stdClass;
  * accounts of one person are voided by the link itself and rate nothing
  * afterwards ({@see samePerson()}, RatingService).
  *
- * @phpstan-type Bar array{kind: 'linked'|'locked'|'forfeits', until: CarbonImmutable|null, main: string|null}
+ * @phpstan-type Bar array{kind: 'linked'|'barred'|'locked'|'forfeits', until: CarbonImmutable|null, main: string|null}
  */
 final class FairPlay
 {
@@ -58,6 +62,11 @@ final class FairPlay
 
         foreach (AccountLink::query()->active()->whereIn('linked_pubkey', $pubkeys)->get(['linked_pubkey', 'main_pubkey']) as $link) {
             $barred[$link->linked_pubkey] = ['kind' => 'linked', 'until' => null, 'main' => $link->main_pubkey];
+        }
+
+        // The bar that runs longest decides the end (ascending, so the last one written wins).
+        foreach (FairPlayBar::query()->running()->whereIn('pubkey', array_values(array_diff($pubkeys, array_keys($barred))))->orderBy('until')->get(['pubkey', 'until']) as $bar) {
+            $barred[$bar->pubkey] = ['kind' => 'barred', 'until' => CarbonImmutable::instance($bar->until), 'main' => null];
         }
 
         foreach (self::locks(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $until) {
@@ -117,6 +126,13 @@ final class FairPlay
         }
 
         $until = LeagueTime::stamp($bar['until'] ?? now());
+
+        // A bar set by an admin: the neutral sentence, never the internal reason.
+        if ($bar['kind'] === 'barred') {
+            return $own
+                ? __('The league has locked rated play for your account until :time. Casual play stays open.', ['time' => $until])
+                : __(':name cannot play rated until :time.', ['name' => $name, 'time' => $until]);
+        }
 
         if ($bar['kind'] === 'forfeits') {
             return $own

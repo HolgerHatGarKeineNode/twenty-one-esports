@@ -1,13 +1,16 @@
 <?php
 
 use App\Models\AccountLink;
+use App\Models\FairPlayBar;
 use App\Models\FalseReport;
 use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
+use App\Support\FairPlay\Bars;
 use App\Support\FairPlay\FairPlay;
 use App\Support\FairPlay\FairPlayRefused;
 use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
+use App\Support\SeasonChain\Seasons;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -23,6 +26,11 @@ use Livewire\Component;
  * reason and stay in the record. Below, the players locked from rated play
  * after confirmed false reports (decided on the dispute page) and the newest
  * of those reports. Nothing is detected automatically.
+ *
+ * Bar by hand (App\Support\FairPlay\Bars): an admin bars one player from
+ * rated play with an internal reason and an end (a time, or the end of the
+ * live season when the field is empty) and lifts a bar again. The form is
+ * deferred: only its button writes.
  */
 new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
@@ -35,6 +43,15 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
     public string $reason = '';
 
     public string $notice = '';
+
+    /** The hex pubkey of the player to bar, picked in <x-player-picker allow-npub>. */
+    public ?string $barPlayer = null;
+
+    /** Internal: shown on this page only, never to the player. */
+    public string $barReason = '';
+
+    /** The end as a datetime-local value in the league's zone; empty = the end of the live season. */
+    public string $barUntil = '';
 
     public function mount(): void
     {
@@ -89,6 +106,18 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
         return $locked;
     }
 
+    /**
+     * The bars set by hand, the running ones first, then the newest.
+     *
+     * @return Collection<int, FairPlayBar>
+     */
+    #[Computed]
+    public function bars(): Collection
+    {
+        return FairPlayBar::query()->orderByDesc('id')->limit(50)->get()
+            ->sortByDesc(fn (FairPlayBar $bar): int => $bar->isRunning() ? 1 : 0)->values();
+    }
+
     /** @return array<string, User> pubkey => account */
     #[Computed]
     public function users(): array
@@ -97,6 +126,7 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
             ...$this->links->flatMap(fn (AccountLink $link): array => [$link->main_pubkey, $link->linked_pubkey, $link->linked_by_pubkey])->all(),
             ...$this->history->flatMap(fn (AccountLink $link): array => [$link->main_pubkey, $link->linked_pubkey, (string) $link->unlinked_by_pubkey])->all(),
             ...$this->falseReports->pluck('pubkey')->all(),
+            ...$this->bars->flatMap(fn (FairPlayBar $bar): array => [$bar->pubkey, $bar->barred_by_pubkey, (string) $bar->lifted_by_pubkey])->all(),
         ];
 
         return User::query()->whereIn('pubkey', array_unique($pubkeys))->get()->keyBy('pubkey')->all();
@@ -136,6 +166,57 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
     }
 
     /**
+     * Bars the picked player from rated play: only this action writes, the
+     * fields before it are deferred.
+     */
+    public function bar(): void
+    {
+        $this->decideBar(function (Bars $bars, User $admin): string {
+            $this->validate(['barPlayer' => ['required', 'string', 'max:100']], ['barPlayer.required' => __('Pick the player.')]);
+
+            try {
+                $until = trim($this->barUntil) === '' ? null : LeagueTime::parse($this->barUntil);
+            } catch (InvalidArgumentException $invalid) {
+                throw new FairPlayRefused($invalid->getMessage());
+            }
+
+            $bar = $bars->set($admin, (string) $this->barPlayer, $this->barReason, $until);
+            $this->reset(['barPlayer', 'barReason', 'barUntil']);
+
+            return __('Barred from rated play until :time.', ['time' => LeagueTime::stamp($bar->until)]);
+        });
+    }
+
+    public function liftBar(int $barId): void
+    {
+        $this->decideBar(function (Bars $bars, User $admin) use ($barId): string {
+            $bars->lift($admin, FairPlayBar::query()->find($barId) ?? throw new FairPlayRefused(__('This bar ended or was lifted already.')));
+
+            return __('Bar lifted. Rated play is open for this player again.');
+        });
+    }
+
+    /**
+     * @param  Closure(Bars, User): string  $action
+     */
+    private function decideBar(Closure $action): void
+    {
+        Gate::authorize('admin');
+        $admin = auth()->user();
+        abort_unless($admin instanceof User, 403);
+        $this->resetErrorBag();
+        $this->notice = '';
+
+        try {
+            $this->notice = $action(app(Bars::class), $admin);
+        } catch (FairPlayRefused $refused) {
+            $this->addError('barReason', $refused->getMessage());
+        }
+
+        unset($this->bars, $this->users);
+    }
+
+    /**
      * @param  Closure(AccountLinks, User): string  $action
      */
     private function decide(Closure $action): void
@@ -162,9 +243,10 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
 @php
     $input = 'rv-in';
     $grouped = $this->links->groupBy('main_pubkey');
+    $seasonEnds = Seasons::live()?->ends_at;
 @endphp
 
-<x-admin.page active="fair-play" :title="__('Fair play')" :lead="__('Linked accounts of one player, and players locked after false result reports')" :notice="$notice" notice-test="fair-play-notice" data-test="admin-fair-play">
+<x-admin.page active="fair-play" :title="__('Fair play')" :lead="__('Linked accounts of one player, players barred by hand, and players locked after false result reports')" :notice="$notice" notice-test="fair-play-notice" data-test="admin-fair-play">
     <x-slot:readout>
         <span class="flex items-baseline gap-2"><span class="rv-m">{{ __('linked') }}</span><span class="rv-num text-base text-ink" data-test="readout-value">{{ $this->links->count() }}</span></span>
     </x-slot:readout>
@@ -207,6 +289,52 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
             </div>
         @empty
             <x-admin.empty :text="__('No accounts are linked.')" />
+        @endforelse
+    </x-admin.panel>
+
+    <x-admin.panel :title="__('Bar a player from rated play')" :meta="__('by hand, with an end')" data-test="fair-play-bar-panel">
+        <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The player plays no new rated match in any game until the end you set. Running matches, mined blocks and prizes stay as they are. The player reads that the league locked rated play and until when, never your reason.') }}</p>
+        <form wire:submit="bar" wire:confirm="{{ __('Bar this player from rated play?') }}" class="flex flex-col gap-3" data-test="fair-play-bar-form">
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <x-player-picker id="fair-play-bar-player" wire:model="barPlayer" allow-npub :label="__('Player')" :exclude="[(int) auth()->id()]" />
+                <label class="flex flex-col gap-1.5 text-xs text-ink-2">{{ __('Barred until (:zone)', ['zone' => LeagueTime::zoneName()]) }}
+                    <input type="datetime-local" wire:model="barUntil" class="{{ $input }}" data-test="fair-play-bar-until">
+                    <span class="text-xs text-ink-3" data-test="fair-play-bar-until-hint">{{ $seasonEnds ? __('Empty: until the end of the live season, :time.', ['time' => LeagueTime::stamp($seasonEnds)]) : __('No season is live: give the bar an end.') }}</span>
+                </label>
+            </div>
+            @error('barPlayer')<p class="m-0 text-[13px] text-loss" role="alert" data-test="fair-play-bar-player-error">{{ $message }}</p>@enderror
+            <label class="flex max-w-xl flex-col gap-1.5 text-xs text-ink-2">{{ __('Reason (required, internal: the player never sees it)') }}
+                <input type="text" wire:model="barReason" maxlength="280" class="{{ $input }}" data-test="fair-play-bar-reason">
+            </label>
+            @error('barReason')<p class="m-0 text-[13px] text-loss" role="alert" data-test="fair-play-bar-error">{{ $message }}</p>@enderror
+            <span class="flex flex-wrap gap-3">
+                <x-button type="submit" variant="danger" icon="shield-check" data-test="fair-play-bar">{{ __('Bar from rated play') }}</x-button>
+            </span>
+        </form>
+    </x-admin.panel>
+
+    <x-admin.panel :title="__('Barred by hand')" :meta="trans_choice(':count bar|:count bars', $this->bars->count())" flush data-test="fair-play-bars">
+        @forelse ($this->bars as $bar)
+            <div class="flex flex-col gap-2 border-t border-hairline py-2 first:border-t-0 sm:flex-row sm:items-center sm:justify-between" wire:key="bar-{{ $bar->id }}" data-test="fair-play-bar-row" data-running="{{ $bar->isRunning() ? '1' : '0' }}">
+                <span class="flex min-w-0 flex-col gap-0.5 text-[13px]">
+                    <span class="flex flex-wrap items-baseline gap-x-2">
+                        <b class="[overflow-wrap:anywhere]">{{ $this->name($bar->pubkey) }}</b>
+                        @if ($bar->isRunning())
+                            <span class="text-loss">{{ __('no rated play until :time', ['time' => LeagueTime::stamp($bar->until)]) }}</span>
+                        @elseif ($bar->lifted_at)
+                            <span class="text-xs text-ink-3">{{ __('Lifted by :admin on :time', ['admin' => $this->name((string) $bar->lifted_by_pubkey), 'time' => LeagueTime::stamp($bar->lifted_at)]) }}</span>
+                        @else
+                            <span class="text-xs text-ink-3">{{ __('ended on :time', ['time' => LeagueTime::stamp($bar->until)]) }}</span>
+                        @endif
+                    </span>
+                    <span class="text-xs break-words text-ink-2">{{ __('Barred by :admin on :time: :reason', ['admin' => $this->name($bar->barred_by_pubkey), 'time' => LeagueTime::stamp($bar->created_at ?? now()), 'reason' => $bar->reason]) }}</span>
+                </span>
+                @if ($bar->isRunning())
+                    <x-button variant="secondary" wire:click="liftBar({{ $bar->id }})" wire:confirm="{{ __('Lift this bar? The player plays rated again at once.') }}" data-test="fair-play-bar-lift">{{ __('Lift the bar') }}</x-button>
+                @endif
+            </div>
+        @empty
+            <x-admin.empty :text="__('Nobody is barred by hand.')" />
         @endforelse
     </x-admin.panel>
 
