@@ -384,7 +384,7 @@ test('chess keeps its weights and shares: the config, the default draft and a se
         // off here, would hold the other 20 %.
         ->and($defaults['shares'])->toBe(['chess' => 50, 'board-games' => 30])
         // The board games are in the draft as a group with their weights: they mine from Block 0 (user, 2026-10-11).
-        ->and($defaults['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['blockli', 'nine-mens-morris', 'checkers']])
+        ->and($defaults['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19']])
         // Correspondence (P8) is a mode of each board game with its own weight row; Blockli is switched off here.
         ->and(ChainDraft::table($defaults)['board-games'])->toBe(['nine-mens-morris/correspondence', 'checkers/correspondence'])
         ->and($season->genesis->weightFor('nine-mens-morris/correspondence'))->toBe(2000)

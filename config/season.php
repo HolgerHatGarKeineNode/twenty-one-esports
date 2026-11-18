@@ -125,11 +125,13 @@ return [
     | and era in percent, daily limits per winning player, share key and UTC
     | day. A share group (`groups`, NIP `group`) counts its games as one for
     | both: the two EA Sports FC editions share one share and one daily limit,
-    | and so do the board games Blockli, nine men's morris and checkers
-    | (`board-games`, plan "Mühle und Dame", P6; user decision 2026-09-29).
+    | and so do the board games Blockli, nine men's morris, checkers,
+    | Blockspace and Go on 9 x 9, 13 x 13 and 19 x 19 (`board-games`, plan
+    | "Mühle und Dame", P6; user decisions 2026-09-29 and 2026-11-18).
     | `pairlimit` is [per UTC day, per season]; `subtree` 101 switches rule 7
-    | off; `moves` counts for chess and the board games. The length is in
-    | weeks, eras last `halving_days`.
+    | off; `moves` counts for chess and the board games: full moves, and for
+    | Blockspace every transaction a side set (BoardGame::minedMoves()). The
+    | length is in weeks, eras last `halving_days`.
     |
     | Chess, the board games and Hyperbitcoinization mine from Block 0, and
     | nothing else (user decision 2026-11-18): chess at 50 %, the board games
@@ -138,7 +140,11 @@ return [
     | blitz, as chess daily (user decision 2026-10-11). Hyperbitcoinization
     | mines one block per rated match for its winner alone, a free-for-all or
     | a 1v1 between trusted players (NIP rev. 9.26, draft), at weight 1 in
-    | both modes; the game has no ladder event. A game that is switched off
+    | both modes; the game has no ladder event. Blockspace and the three Go
+    | sizes, which joined the board games after 2026-10-11, mine at the board
+    | games' weights (blitz 1, rapid 1.5, correspondence 2) out of the board
+    | games' share and daily limit, each only while its own switch is on
+    | (user decision 2026-11-18). A game that is switched off
     | is left out of the draft (ChainDraft::defaults()): a board game's
     | weight, with all board games off their share and daily limit too, and
     | with Hyperbitcoinization off (`ESPORTS_HYPER`) its weights, share and
@@ -188,13 +194,25 @@ return [
             'blockli/correspondence' => 2000,
             'nine-mens-morris/correspondence' => 2000,
             'checkers/correspondence' => 2000,
+            // Blockspace and Go on its three sizes (user, 2026-11-18): the weights of the other board games, in the
+            // modes each offers.
+            'blockspace/blitz' => 1000,
+            'blockspace/rapid' => 1500,
+            'blockspace/correspondence' => 2000,
+            'go-9/blitz' => 1000,
+            'go-9/rapid' => 1500,
+            'go-9/correspondence' => 2000,
+            'go-13/rapid' => 1500,
+            'go-13/correspondence' => 2000,
+            'go-19/rapid' => 1500,
+            'go-19/correspondence' => 2000,
             // Hyperbitcoinization from Block 0 (user, 2026-11-18): one block per rated match for its winner, at weight 1.
             'hyperbitcoinization/live' => 1000,
             'hyperbitcoinization/correspondence' => 1000,
         ],
         'groups' => [
             'ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'],
-            'board-games' => ['blockli', 'nine-mens-morris', 'checkers'],
+            'board-games' => ['blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19'],
         ],
         // Chess, the board games and Hyperbitcoinization from Block 0 (user, 2026-11-18).
         'shares' => [
@@ -244,6 +262,16 @@ return [
                 'blockli/correspondence' => 2000,
                 'nine-mens-morris/correspondence' => 2000,
                 'checkers/correspondence' => 2000,
+                'blockspace/blitz' => 1000,
+                'blockspace/rapid' => 1500,
+                'blockspace/correspondence' => 2000,
+                'go-9/blitz' => 1000,
+                'go-9/rapid' => 1500,
+                'go-9/correspondence' => 2000,
+                'go-13/rapid' => 1500,
+                'go-13/correspondence' => 2000,
+                'go-19/rapid' => 1500,
+                'go-19/correspondence' => 2000,
             ],
             'share' => 10,
             'daily' => 5,
