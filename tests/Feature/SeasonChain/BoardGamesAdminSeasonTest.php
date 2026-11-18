@@ -18,6 +18,9 @@ use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\SeasonChain\ChainDraft;
+use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\SeasonReleaseRefused;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\CheckersGame;
@@ -162,7 +165,8 @@ test('a live season whose Block 0 gave the board games a share lets them mine by
     Livewire::actingAs($this->board)->test('pages::admin.season')
         ->assertSet('weights.nine-mens-morris/correspondence', '')
         ->assertSet('weights.checkers/correspondence', '')
-        ->assertSet('shares.board-games', '5')
+        ->assertSee('Board games 5 %')
+        ->assertDontSee('data-test="change-share-', false)
         ->assertSet('daily.board-games', '')
         ->set('weights.nine-mens-morris/correspondence', '1.5')
         ->set('weights.checkers/correspondence', '1')
@@ -177,22 +181,20 @@ test('a live season whose Block 0 gave the board games a share lets them mine by
     ]);
 });
 
-test('a running season cannot give a game a share: a change that names one is refused, whatever else it carries', function () {
+test('a running season cannot give a game a share: the page offers no share field, and a change that names one is refused, whatever else it carries', function () {
     openSeason(boardGamesUnminedGenesis(withGroup: false));
 
-    $page = Livewire::actingAs($this->board)->test('pages::admin.season')
-        ->assertSet('shares.nine-mens-morris', '')
-        ->assertSet('shares.checkers', '');
-
-    expect($page->get('shares'))->not->toHaveKey('board-games');
-
-    $page->set('weights.checkers/correspondence', '1')
-        ->set('shares.ea-sports-fc', '20')
-        ->set('shares.checkers', '5')
+    Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->assertDontSee('data-test="change-share-', false)
+        ->assertSee('data-test="shares-fixed"', false)
+        ->set('weights.checkers/correspondence', '1')
         ->set('daily.checkers', '3')
         ->set('reason', 'Checkers mines from today.')
         ->call('saveChange')
-        ->assertSet('changeError', 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
+        ->assertSet('changeError', 'Checkers has no share in this season. The shares are fixed at Block 0, so it can mine from the next season on.');
+
+    expect(fn () => app(SeasonChains::class)->changeParameters($this->board, ['weights' => ['checkers/correspondence' => 1000], 'shares' => ['ea-sports-fc' => 20, 'checkers' => 5], 'daily' => ['checkers' => 3]], 'Checkers mines from today.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class, 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
 
     expect(SeasonParameterChange::query()->count())->toBe(0);
 });

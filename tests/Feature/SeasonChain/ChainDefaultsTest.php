@@ -19,6 +19,7 @@ use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonParameters;
 use App\Support\SeasonChain\SeasonRelease;
+use App\Support\SeasonChain\SeasonReleaseRefused;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -173,6 +174,10 @@ test('with every board game switched on, Blockspace and Go have the board games\
     expect(array_intersect_key($defaults['weights'], array_flip(chainDefaultsKeysOf($defaults['weights'], 'blockspace', 'go-9', 'go-13', 'go-19'))))->toBe($weights)
         ->and($defaults['shares'])->toBe(['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20])
         ->and($defaults['daily'])->toBe(['chess' => 5, 'board-games' => 5, 'hyperbitcoinization' => 5])
+        // Point 6 with all of them in the board games' 30 %: the last era holds 9 843 sats for the key, the largest
+        // block there pays 131 (weight 2, era 6), so every weight pays something and no block outgrows its era.
+        ->and(ChainDraft::eraRefusal($defaults['supply'], $defaults['subsidy'], $defaults['eras'], $defaults['weights'], $defaults['shares'], $defaults['groups']))->toBeNull()
+        ->and(ChainDraft::eraRefusal(20_000, $defaults['subsidy'], $defaults['eras'], $defaults['weights'], $defaults['shares'], $defaults['groups']))->toContain('sats in era 6, but that era holds only')
         ->and(chainDefaultsSignedWeights('blockspace', 'go-9', 'go-13', 'go-19'))->toBe(array_map(fn (int $milli): string => ['1000' => '1', '1500' => '1.5', '2000' => '2'][$milli], $weights))
         // The line of 2026-11-18 named ten of their modes; what is left are the series games, which stay without a weight.
         ->and($unweighted)->toBe(['No weight, so these do not mine: Rocket League 1v1, Rocket League 2v2, Rocket League 3v3, EA Sports FC 27 1v1, EA Sports FC 27 2v2, EA Sports FC 26 1v1, EA Sports FC 26 2v2, Age of Empires II: Definitive Edition 1v1, Age of Empires II: Definitive Edition 2v2, Age of Empires II: Definitive Edition 3v3.']);
@@ -282,7 +287,7 @@ test('while Hyperbitcoinization is switched off, neither the draft nor a live se
         ->assertDontSee('data-test="hyperbitcoinization-change-proposal"', false);
 });
 
-test('a live season released without Hyperbitcoinization cannot take it in: its proposal carries shares, and the shares are fixed at Block 0', function () {
+test('a live season released without Hyperbitcoinization cannot take it in: the page offers no proposal and no share field, and a weight for it is refused', function () {
     BlockliOn::play();
     HyperOn::play();
     // A season released while the game was switched off: chess and the board games alone.
@@ -291,20 +296,25 @@ test('a live season released without Hyperbitcoinization cannot take it in: its 
 
     expect(HyperMining::weight('live'))->toBe(0);
 
-    Livewire::actingAs($this->board)->test('pages::admin.season')
-        ->assertSee('data-test="hyperbitcoinization-change-proposal"', false)
+    // Mutation: the share inputs put back into the change form turn `change-share-` red; the join proposal put back
+    // turns its hook red.
+    $page = Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->assertDontSee('data-test="hyperbitcoinization-change-proposal"', false)
+        ->assertDontSee('data-test="change-share-', false)
+        ->assertSee('data-test="shares-fixed"', false)
+        ->assertSee('Shares of the supply, fixed at Block 0: Chess 60 %, Board games 40 %.')
         ->assertSet('weights.hyperbitcoinization/live', '')
-        ->call('fillHyperChange')
-        ->assertSet('weights.hyperbitcoinization/live', '1')
-        ->assertSet('weights.hyperbitcoinization/correspondence', '1')
-        ->assertSet('shares.hyperbitcoinization', '20')
-        ->assertSet('shares.chess', '48')
-        ->assertSet('shares.board-games', '32')
-        ->assertSet('daily.hyperbitcoinization', '5')
-        ->tap(fn () => expect(SeasonParameterChange::query()->count())->toBe(0))
+        ->set('weights.hyperbitcoinization/live', '1')
+        ->set('daily.hyperbitcoinization', '5')
         ->set('reason', 'Hyperbitcoinization joins the season.')
         ->call('saveChange')
-        ->assertSet('changeError', 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
+        ->assertSet('changeError', 'Hyperbitcoinization has no share in this season. The shares are fixed at Block 0, so it can mine from the next season on.');
+
+    expect(array_key_exists('shares', $page->instance()->all()))->toBeFalse();
+
+    // Past the page: the rule itself refuses a change that names a share.
+    expect(fn () => app(SeasonChains::class)->changeParameters($this->board, ['shares' => ['chess' => 48, 'board-games' => 32, 'hyperbitcoinization' => 20]], 'Hyperbitcoinization joins the season.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class, 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
 
     expect(SeasonParameterChange::query()->count())->toBe(0)
         ->and(HyperMining::weight('live'))->toBe(0)
