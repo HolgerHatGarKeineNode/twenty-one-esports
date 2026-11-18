@@ -836,7 +836,7 @@ final class ChessGameService
         return match (true) {
             $attestation === null => ['status' => 'pending', 'text' => __('pending: the league attests the result'),
                 'title' => __('Block pending'), 'detail' => __('the league attests the result')],
-            $attestation->mines() => ['status' => 'block', 'text' => __('mined block :height, :sats sats per winner, pending season review', ['height' => $attestation->height, 'sats' => $attestation->reward_per_player]),
+            $attestation->mines() => ['status' => 'block', 'text' => __('mined block :height, :sats sats per winner, pending season review', ['height' => Formats::number((int) $attestation->height), 'sats' => Formats::number((int) $attestation->reward_per_player)]),
                 'title' => __('Block :height is mined', ['height' => Formats::number((int) $attestation->height)]),
                 'detail' => __(':sats sats for the winner, paid out after the season review', ['sats' => Formats::number((int) $attestation->reward_per_player)])],
             $attestation->consensusRule() !== null => ['status' => 'none', 'text' => __('no block: rule :rule, :reason', ['rule' => $attestation->rule, 'reason' => $attestation->consensusRule()->reason()]),

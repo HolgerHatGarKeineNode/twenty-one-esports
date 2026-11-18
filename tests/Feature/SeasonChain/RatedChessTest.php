@@ -264,10 +264,10 @@ test('the end-of-game panel says what a rated game mined: a block, or no block w
     $long = playTwentyMoves($queue->join($b, 'blitz', rated: true));
     $service->resign($long->refresh(), $long->black);
 
-    $reward = SeasonAttestation::query()->sole()->reward_per_player;
-    // The short line of the result card names the block and its sats, and that they are paid out after the season review.
-    expect($mining($long))->toBe(['status' => 'block', 'text' => 'mined block 1, '.$reward.' sats per winner, pending season review',
-        'title' => 'Block 1 is mined', 'detail' => number_format($reward).' sats for the winner, paid out after the season review']);
+    // The full row and the short line of the result card name the block and its sats, both grouped by thousands; the short line says they are paid out after the season review.
+    expect(SeasonAttestation::query()->sole()->reward_per_player)->toBe(2100)
+        ->and($mining($long))->toBe(['status' => 'block', 'text' => 'mined block 1, 2,100 sats per winner, pending season review',
+            'title' => 'Block 1 is mined', 'detail' => '2,100 sats for the winner, paid out after the season review']);
 
     // Resigned after one move: no block, rule 2.
     [$c, $d] = [clanPlayer(), clanPlayer()];
