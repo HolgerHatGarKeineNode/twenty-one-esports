@@ -9310,5 +9310,15 @@
     "That many within the window bar a player from rated play in every game. Counts leaving and turns that ran out, since Block 0 of the live season. Applies at once.": "So viele im Zeitfenster sperren einen Spieler für gewertete Partien in allen Spielen. Gezählt werden Verlassen und abgelaufene Züge seit Block 0 der laufenden Season. Gilt sofort.",
     "Window for left rated matches (days)": "Zeitfenster für verlassene gewertete Matches (Tage)",
     "Pause from rated play after leaving (days)": "Pause von gewerteten Partien nach dem Verlassen (Tage)",
-    "Counted from the last left match. Applies at once, to running pauses too.": "Gerechnet ab dem zuletzt verlassenen Match. Gilt sofort, auch für laufende Pausen."
+    "Counted from the last left match. Applies at once, to running pauses too.": "Gerechnet ab dem zuletzt verlassenen Match. Gilt sofort, auch für laufende Pausen.",
+    "If you leave, nobody at this table mines a season block.": "Wenn du gehst, schürft an diesem Tisch niemand einen Season-Block.",
+    "The match counts as a loss for you.": "Das Match zählt für dich als Niederlage.",
+    "It would be rated match no. :count you left within :days days. The limit is :limit.": "Es wäre dein :count. verlassenes gewertetes Match in :days Tagen. Die Grenze liegt bei :limit.",
+    "This one locks rated play in every game for :lock days.": "Dieses sperrt dich :lock Tage für gewertetes Spielen in allen Spielen.",
+    "The next one locks rated play in every game for :lock days.": "Das nächste sperrt dich :lock Tage für gewertetes Spielen in allen Spielen.",
+    "From no. :limit on, rated play is locked in every game for :lock days.": "Ab dem :limit. ist gewertetes Spielen in allen Spielen :lock Tage gesperrt.",
+    "Leaving a rated match needs your confirmation.": "Ein gewertetes Match verlässt du nur mit Bestätigung.",
+    ":count turns in a row that run out count as leaving: a loss, no season block at this table, and it counts toward the lock from rated play.": ":count abgelaufene Züge in Folge zählen wie Verlassen: Niederlage, kein Season-Block an diesem Tisch, und es zählt für die Sperre gewerteter Partien.",
+    "Leave this rated match?": "Dieses gewertete Match verlassen?",
+    "Leave and take the loss": "Verlassen und Niederlage hinnehmen"
 }

@@ -1192,6 +1192,8 @@ export function render() {
     $$('.qty button').forEach((x) => x.classList.toggle('on', x.dataset.q === UI.qty));
     $('#undo-btn').hidden = !(L && L.can_undo);
     $('#leave-btn')?.toggleAttribute('hidden', G.over || !playing());
+    // The rated leave dialog and the clock's forfeit line only while the viewer still plays the seat.
+    if (G.over || !playing()) { $('#leave-dlg')?.setAttribute('hidden', ''); $('#forfeit-note')?.setAttribute('hidden', ''); }
     const mainOk = !!L && L.can_end_phase;
     $('#main-btn').disabled = !mainOk;
     $('#main-t').textContent = G.over ? t('Match over') : !myTurn() ? t(':name moves', { name: nameOf(G.cur) }) : G.phase === 'buy' ? t('To the attack') : G.phase === 'attack' ? t('End attack') : t('End turn');
@@ -1350,15 +1352,26 @@ function bindControls() {
     }
     const leave = $('#leave-btn');
     if (leave) {
+        // A rated match: leaving is a forfeit, so the dialog the page rendered asks first (its lines are the player's
+        // own numbers); the server refuses a rated leave without `confirm`. Staying holds the focus (R18).
+        const dialog = $('#leave-dlg');
+        const send = async (body) => {
+            const r = await NET.post(CFG.urls.leave, body);
+            if (r.ok && r.data?.snapshot) { keepSnapshot(r.data.snapshot); await catchUp(); settle(); toast(t('You left. A bot plays your seat now.')); } else refused(r);
+        };
+        if (dialog) {
+            $('#leave-stay').onclick = () => { dialog.hidden = true; leave.focus(); };
+            $('#leave-confirm').onclick = async () => { $('#leave-confirm').disabled = true; await send({ confirm: true }); $('#leave-confirm').disabled = false; dialog.hidden = true; };
+        }
         leave.onclick = async () => {
+            if (dialog) { dialog.hidden = false; $('#leave-stay').focus(); return; }
             // The first click asks (for 6 s), the second leaves.
             if (leave.dataset.armed !== '1') {
                 leave.dataset.armed = '1'; leave.classList.add('armed'); toast(t('Really leave? Click again: a bot takes over.'));
                 setTimeout(() => { leave.dataset.armed = '0'; leave.classList.remove('armed'); }, 6000);
                 return;
             }
-            const r = await NET.post(CFG.urls.leave);
-            if (r.ok && r.data?.snapshot) { keepSnapshot(r.data.snapshot); await catchUp(); settle(); toast(t('You left. A bot plays your seat now.')); } else refused(r);
+            await send({});
         };
     }
     // Keyboard: every frequent action has a key; the help screen lists them.
@@ -1371,6 +1384,7 @@ function bindControls() {
         if (visible('#banner') && $('#banner').dataset.wait === '1') return;
         if (visible('#battle')) { if (k === 'w' || k === ' ' || k === 'enter') press('#roll-btn'); else if (k === 'e') press('#blitz-btn'); else if (k === 'escape') press('#retreat-btn') || press('#skip-btn'); else if (k === 's') press('#skip-btn'); return; }
         if (visible('#move')) { const r = $('#move-range'); if (k === 'enter' || k === ' ') press('#move-ok'); else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); r.value = +r.value + (k === 'arrowright' ? 1 : -1); r.dispatchEvent(new Event('input')); } return; }
+        if ($('#leave-dlg') && visible('#leave-dlg')) { if (k === 'escape') press('#leave-stay'); return; }
         if (visible('#help')) { if (k === 'escape' || k === 'enter' || k === 'h') press('#help-close'); return; }
         if (visible('#end')) return;
         if (k === 'm') $('#mode-btn').click();

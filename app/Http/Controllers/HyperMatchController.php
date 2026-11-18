@@ -8,6 +8,7 @@ use App\Models\HyperRating;
 use App\Models\HyperTable;
 use App\Models\User;
 use App\Support\Cards\PageCard;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Hyper\HyperGame;
@@ -121,6 +122,8 @@ class HyperMatchController extends Controller
             'preview' => $this->preview($match, false),
             'snapshot' => $matches->snapshot($match, $viewer),
             'back' => route('hyper.index', absolute: false),
+            // A player's own seat in a running rated match: what leaving it (or letting the turns run out) costs.
+            'forfeit' => $this->forfeitWarning($match, $viewer),
             'config' => [
                 'urls' => [
                     'snapshot' => route('hyper.snapshot', $match, false),
@@ -350,10 +353,20 @@ class HyperMatchController extends Controller
         return $this->refusing(fn (): JsonResponse => response()->json($emotes->send($match, $this->user($request), $data['emote'])));
     }
 
+    /**
+     * The player leaves their seat. In a rated match that is a forfeit (a loss, no season block for the table, and it
+     * counts toward the fair-play lock), so it needs `{"confirm": true}`, sent by the page's dialog: without it the
+     * answer is 422 `confirm_forfeit` with the consequences as they stand now (`warning`), and nothing changes.
+     */
     public function leave(Request $request, HyperMatch $match, HyperMatches $matches): JsonResponse
     {
         return $this->refusing(function () use ($request, $match, $matches): JsonResponse {
             $user = $this->user($request);
+            $warning = $this->forfeitWarning($match, $user);
+
+            if ($warning !== null && ! $request->boolean('confirm')) {
+                return response()->json(['reason' => 'confirm_forfeit', 'message' => __('Leaving a rated match needs your confirmation.'), 'warning' => $warning], 422);
+            }
 
             return response()->json(['snapshot' => $matches->snapshot($matches->leave($match, $user)->refresh(), $user)]);
         });
@@ -439,6 +452,24 @@ class HyperMatchController extends Controller
             report($exception);
             abort(404);
         }
+    }
+
+    /**
+     * What leaving costs the viewer (FairPlay::forfeitWarning()), with the line for the turn clock: only for a seat
+     * the viewer still plays in a running rated match, null for everybody else.
+     *
+     * @return array{count: int, limit: int, days: int, lock_days: int, locks: bool, lines: list<string>, timeouts: string}|null
+     */
+    private function forfeitWarning(HyperMatch $match, ?User $viewer): ?array
+    {
+        if ($viewer === null || ! $match->rated || ! $match->isActive() || $match->handSeatOf($viewer) === null) {
+            return null;
+        }
+
+        return [
+            ...FairPlay::forfeitWarning($viewer),
+            'timeouts' => __(':count turns in a row that run out count as leaving: a loss, no season block at this table, and it counts toward the lock from rated play.', ['count' => (int) config('esports.hyper.takeover_timeouts', 3)]),
+        ];
     }
 
     private function viewer(Request $request): ?User

@@ -93,6 +93,10 @@
             </div>
         </div>
         <div id="instruct" class="frame shadowed" aria-live="polite"><svg><use href="#i-info"/></svg><span class="spectating">{{ __('Spectator') }}</span><span id="instruct-t">–</span></div>
+        @if (! empty($forfeit))
+            {{-- Rated: turns that run out are a forfeit as leaving is; said where the clock runs. --}}
+            <p id="forfeit-note" data-test="hyper-forfeit-note">{{ $forfeit['timeouts'] }}</p>
+        @endif
     </div>
     <span class="grow"></span>
     <div class="tools frame shadowed">
@@ -212,6 +216,25 @@
         </div>
     </div>
 </div>
+
+@if (! empty($forfeit))
+    {{-- R18: leaving a rated match is final and costly, so it asks first; the focus goes to staying. Static markup the
+         page's script only shows and hides: snapshots and events never touch it, so it stays open while the match moves on. --}}
+    <div class="overlay" id="leave-dlg" hidden data-test="hyper-leave-dialog" data-count="{{ $forfeit['count'] }}" data-limit="{{ $forfeit['limit'] }}" data-locks="{{ $forfeit['locks'] ? '1' : '0' }}">
+        <div class="panel frame" role="alertdialog" aria-modal="true" aria-labelledby="leave-h" aria-describedby="leave-lines">
+            <h2 id="leave-h">{{ __('Leave this rated match?') }}</h2>
+            <ul id="leave-lines" data-test="hyper-leave-lines">
+                @foreach ($forfeit['lines'] as $line)
+                    <li>{{ $line }}</li>
+                @endforeach
+            </ul>
+            <div class="row-btn">
+                <button class="big" id="leave-stay" type="button" data-test="hyper-leave-stay"><svg><use href="#i-check"/></svg>{{ __('Keep playing') }}</button>
+                <button class="ghost" id="leave-confirm" type="button" data-test="hyper-leave-confirm">{{ __('Leave and take the loss') }}</button>
+            </div>
+        </div>
+    </div>
+@endif
 
 <div class="overlay" id="end" hidden data-test="hyper-end"><div class="end-art" id="end-art"></div>
     <div class="panel frame" role="dialog" aria-modal="true" aria-labelledby="end-h" style="text-align:center">

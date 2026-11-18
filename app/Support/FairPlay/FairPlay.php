@@ -245,6 +245,40 @@ final class FairPlay
     }
 
     /**
+     * What leaving a running rated Hyperbitcoinization match would cost this
+     * player now, in short lines for the confirmation: `count` is the number
+     * this forfeit would have within the window, `locks` whether it reaches
+     * `forfeitThreshold()` and so locks rated play.
+     *
+     * @return array{count: int, limit: int, days: int, lock_days: int, locks: bool, lines: list<string>}
+     */
+    public static function forfeitWarning(User $user): array
+    {
+        $count = self::forfeitsInWindow($user) + 1;
+        $limit = self::forfeitThreshold();
+        $days = self::forfeitWindowDays();
+        $lock = self::forfeitLockDays();
+
+        return [
+            'count' => $count,
+            'limit' => $limit,
+            'days' => $days,
+            'lock_days' => $lock,
+            'locks' => $count >= $limit,
+            'lines' => [
+                __('If you leave, nobody at this table mines a season block.'),
+                __('The match counts as a loss for you.'),
+                __('It would be rated match no. :count you left within :days days. The limit is :limit.', ['count' => $count, 'days' => $days, 'limit' => $limit]),
+                match (true) {
+                    $count >= $limit => __('This one locks rated play in every game for :lock days.', ['lock' => $lock]),
+                    $count === $limit - 1 => __('The next one locks rated play in every game for :lock days.', ['lock' => $lock]),
+                    default => __('From no. :limit on, rated play is locked in every game for :lock days.', ['limit' => $limit, 'lock' => $lock]),
+                },
+            ],
+        ];
+    }
+
+    /**
      * The running locks of these players: the newest `threshold()` false
      * reports lie within `windowDays()` of each other and the newest is less
      * than `lockDays()` old. Only reports of the last window + lock days can
