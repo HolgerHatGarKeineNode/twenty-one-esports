@@ -489,7 +489,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         <tbody>
                             @foreach ([
                                 [__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => $shortKey((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')],
-                                [$shareTerm, collect($inForce->shares)->map(fn ($share, $game) => ChainOverview::gameLabel((string) $game).' '.$share.' %')->implode(', ')],
+                                [$shareTerm, ChainOverview::sharesLine($inForce->shares)],
                                 [__('Blocks per player a day'), collect($inForce->daily)->map(fn ($daily, $game) => ChainOverview::gameLabel((string) $game).' '.$daily)->implode(', ')],
                                 [__('Blocks per pairing'), __(':day a day, :season in the season', ['day' => $inForce->pairLimitPerDay, 'season' => $inForce->pairLimitPerSeason])],
                                 [__('Same trust circle'), $inForce->subtree > 100 ? __('rule off') : __('no block from :percent %', ['percent' => $inForce->subtree])],
