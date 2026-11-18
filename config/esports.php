@@ -920,6 +920,12 @@ return [
     | every game for `forfeit_lock_days` days from the last one. Only
     | forfeits since Block 0 of the live season count.
     |
+    | Checks: the thresholds of the admin checking view (/admin/checks,
+    | App\Support\FairPlay\Checks). They only decide which chip an admin
+    | sees; nothing is punished automatically, and no player ever sees them.
+    | Chosen loose for the first season (a test run): better one chip too
+    | many than a blind spot.
+    |
     */
 
     'fair_play' => [
@@ -929,6 +935,41 @@ return [
         'forfeits' => (int) env('ESPORTS_FAIR_PLAY_FORFEITS', 2),
         'forfeit_window_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_WINDOW_DAYS', 30),
         'forfeit_lock_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_LOCK_DAYS', 7),
+
+        'checks' => [
+            // One opponent dominates: this share (percent) of a player's blocks won against one opponent. With the
+            // season pair limit of 3, an honest player passes 60 % only while he has mined 5 blocks or fewer.
+            'dominant_share' => 60,
+            // ... and only from this many blocks on: one block is always 100 % against one opponent.
+            'dominant_min_blocks' => 3,
+            // Pairings that reached the season pair limit: from the first on, the limit itself is the bound.
+            'pairs_at_limit' => 1,
+            // Wins refused for the pair limit (day or season) or the daily limit: once or twice happens to an
+            // eager player, three times is playing against the limits.
+            'limit_refusals' => 3,
+            // Short wins: a chess or board win that ended by resignation or timeout within this many plies above
+            // the minimum move count (three full moves) ...
+            'short_win_margin_plies' => 6,
+            // ... at least this many of them (one short game proves nothing) ...
+            'short_win_min' => 2,
+            // ... and this share (percent) of the player's chess and board blocks.
+            'short_win_share' => 50,
+            // Mutual wins: each of two players mined this many blocks from the other. One each is a normal rematch.
+            'mutual_min_each' => 2,
+            // Left rated Hyperbitcoinization matches in the season: shown from the first; the lock itself needs
+            // `forfeits` (2) within the window.
+            'forfeits' => 1,
+            // Thin trust: this share (percent) of the player's trust comes from one member. 100 = that member alone.
+            'thin_trust_share' => 100,
+            // New account: created at most this many days before its first block. A week covers "made for the season".
+            'new_account_days' => 7,
+            // Undecided counting reports against the player: every single one is worth a look.
+            'reports' => 1,
+            // The page lists at most this many players, the ones with the most chips first.
+            'rows' => 100,
+            // The season's newest candidates read in one pass; a season is expected to hold a few thousand.
+            'read_limit' => 20000,
+        ],
     ],
 
     /*

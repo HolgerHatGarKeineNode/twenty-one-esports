@@ -11,6 +11,7 @@
 return [
     'admin/⚡admins.blade.php' => ['T-Admin-List', 'AdminAdmins › AdminAdmins'],
     'admin/⚡blockfill.blade.php' => ['T-Admin-List', 'AdminBlockfill › AdminBlockfill'],
+    'admin/⚡checks.blade.php' => ['T-Admin-List', 'AdminChecks › AdminChecks'],
     'admin/⚡dispute.blade.php' => ['T-Admin-Case', 'AdminDispute › AdminDispute'],
     'admin/⚡disputes.blade.php' => ['T-Admin-List', 'AdminDisputes › AdminDisputes'],
     'admin/⚡events.blade.php' => ['T-Admin-List', 'AdminEvents › AdminEvents'],

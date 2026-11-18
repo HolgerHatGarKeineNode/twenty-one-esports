@@ -36,6 +36,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Fair play (P41): linked accounts of one person, and players locked after confirmed false reports.
     Route::livewire('fair-play', 'pages::admin.fair-play')->name('fair-play');
 
+    // The checking view: which players of the live season look conspicuous; read-only, barring happens on fair-play.
+    Route::livewire('checks', 'pages::admin.checks')->name('checks');
+
     // Site-wide mutes and bans of a Nostr key: the list with Undo, and the moderation menu on every chat message.
     Route::livewire('moderation', 'pages::admin.moderation')->name('moderation');
     Route::post('moderation', SiteModerationController::class)->middleware('throttle:60,1')->name('moderation.store');

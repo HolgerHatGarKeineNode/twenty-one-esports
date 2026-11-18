@@ -261,6 +261,26 @@ final class FairPlay
     }
 
     /**
+     * How many rated Hyperbitcoinization matches each of these players
+     * forfeited since `$since` (the checking view passes Block 0 of the live
+     * season): the same seats {@see forfeitsInWindow()} counts, for any
+     * number of players in one query. Players without a forfeit are absent.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int> user id => forfeits
+     */
+    public static function forfeitCounts(array $userIds, CarbonImmutable $since): array
+    {
+        $counts = [];
+
+        foreach (self::forfeits($userIds, $since) as $row) {
+            $counts[(int) $row->user_id] = ($counts[(int) $row->user_id] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
      * What leaving a running rated Hyperbitcoinization match would cost this
      * player now, in short lines for the confirmation: `count` is the number
      * this forfeit would have within the window, `locks` whether it reaches

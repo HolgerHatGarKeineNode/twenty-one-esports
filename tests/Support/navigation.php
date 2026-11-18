@@ -102,6 +102,7 @@ const NAV_PAGES = [
     'admin.moderation' => ['roles' => ['admin'], 'max' => 2],
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
+    'admin.checks' => ['roles' => ['admin'], 'max' => 2],
     'admin.nip05' => ['roles' => ['admin'], 'max' => 2],
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],
     'admin.organizers' => ['roles' => ['admin'], 'max' => 2],
