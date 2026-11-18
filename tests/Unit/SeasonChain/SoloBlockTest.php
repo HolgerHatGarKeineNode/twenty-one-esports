@@ -22,7 +22,7 @@ function soloSeason(array $daily = ['blockfill' => 5], int $entrants = 5, int $w
 {
     $t0 = CarbonImmutable::parse(SOLO_T0);
 
-    return new SeasonParameters('pre-season', $t0, $t0->addWeeks(24), 2_100_000, 2_100, 28 * 86400,
+    return new SeasonParameters('pre-season', $t0, $t0->addWeeks(24), 2_100_000, 2_100, 6,
         new ConsensusParameters(['chess/blitz' => 1000, 'blockfill/40-blocks' => 1000], ['chess' => 40, 'blockfill' => 10], $daily, 1, 3, $subtree, 20,
             soloEntrants: $entrants, soloWins: $wins, soloReview: $review));
 }

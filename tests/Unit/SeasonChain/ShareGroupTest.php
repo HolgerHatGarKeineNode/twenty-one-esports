@@ -2,7 +2,7 @@
 
 /*
  * Share groups (P43, NIP rev. 9.5): both EA Sports FC editions mine, but
- * count as one for the daily limit (rule 5) and the share cap (rule 9), so a
+ * count as one for the daily limit (rule 5) and the pot (rule 9), so a
  * player who owns both editions does not mine twice as much.
  */
 
@@ -18,13 +18,13 @@ use Carbon\CarbonImmutable;
 const SG_T0 = '2026-10-02T17:00:00Z';
 
 /** @param  array<string, list<string>>  $groups */
-function sgChain(array $groups, array $shares = ['ea-sports-fc' => 25], array $daily = ['ea-sports-fc' => 2], int $supply = 2_100_000): BlockChain
+function sgChain(array $groups, array $shares = ['ea-sports-fc' => 25], array $daily = ['ea-sports-fc' => 2], int $supply = 2_100_000, int $eras = 6): BlockChain
 {
     $t0 = CarbonImmutable::parse(SG_T0);
     $weights = ['ea-sports-fc-26/1v1' => 1000, 'ea-sports-fc-27/1v1' => 1000];
 
     return new BlockChain(
-        new SeasonParameters('pre-season', $t0, $t0->addWeeks(24), $supply, 2_100, 28 * 86400, new ConsensusParameters($weights, $shares, $daily, 10, 100, 101, 20, $groups)),
+        new SeasonParameters('pre-season', $t0, $t0->addWeeks(24), $supply, 2_100, $eras, new ConsensusParameters($weights, $shares, $daily, 10, 100, 101, 20, $groups)),
         new ConsensusRules(50),
     );
 }
@@ -61,15 +61,15 @@ test('without the group each edition has its own daily limit: the same four wins
     expect(count($chain->blocks()))->toBe(4);
 });
 
-test('both editions fill one FC share cap per era', function () {
-    // Era 1 budget 8 400, FC 25 %: 2 100, one block of 2 100 in total, whichever edition mines it.
-    $chain = sgChain(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']], daily: ['ea-sports-fc' => 100], supply: 16_800);
+test('both editions mine one FC pot', function () {
+    // FC 25 % of 16 800: a pot of 4 200, its one era ends at 2 100: one block in total, whichever edition mines it.
+    $chain = sgChain(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']], daily: ['ea-sports-fc' => 100], supply: 16_800, eras: 1);
 
     $first = $chain->attest(sgWin('ea-sports-fc-26', 'bob', 10));
     $second = $chain->attest(sgWin('ea-sports-fc-27', 'carol', 20));
 
     expect([$first->mines(), $second->mines()])->toBe([true, false])
-        ->and($second->reason)->toBe('share-cap')
+        ->and($second->reason)->toBe('key-closed')
         ->and($second->subject)->toBe('ea-sports-fc');
 });
 

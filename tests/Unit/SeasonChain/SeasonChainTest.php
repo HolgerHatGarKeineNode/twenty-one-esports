@@ -18,11 +18,11 @@ const SC_T0 = '2026-07-03T17:00:00Z';
  * @param  array<string, int>  $daily
  * @param  array{0: int, 1: int}  $pairLimit
  */
-function scSeason(int $supply = 2_100_000, array $shares = ['chess' => 40, 'rocket-league' => 60], array $daily = ['chess' => 5], array $pairLimit = [1, 3], int $subtree = 90, int $weeks = 24, int $halvingDays = 28): SeasonParameters
+function scSeason(int $supply = 2_100_000, array $shares = ['chess' => 40, 'rocket-league' => 60], array $daily = ['chess' => 5], array $pairLimit = [1, 3], int $subtree = 90, int $weeks = 24, int $eras = 6): SeasonParameters
 {
     $t0 = CarbonImmutable::parse(SC_T0);
 
-    return new SeasonParameters('pre-season', $t0, $t0->addWeeks($weeks), $supply, 20_000, $halvingDays * 86400,
+    return new SeasonParameters('pre-season', $t0, $t0->addWeeks($weeks), $supply, 20_000, $eras,
         new ConsensusParameters(['chess/blitz' => 1000, 'rocket-league/3v3' => 1000], $shares, $daily, $pairLimit[0], $pairLimit[1], $subtree, 20));
 }
 
@@ -95,13 +95,14 @@ test('each consensus rule rejects an invalid block, and the first failing rule i
 
         return [$chain, scWin(30)];
     }, 8, 'pairing-season-limit'],
-    'rule 9: share cap of the game in the era' => [function () {
-        $chain = scChain(scSeason(supply: 100_000, shares: ['chess' => 40]));   // era 1 budget 50 000, chess cap 20 000
+    'rule 9: a key that mined its last era is closed' => [function () {
+        $chain = scChain(scSeason(supply: 100_000, shares: ['chess' => 40], eras: 1));   // chess pot 40 000, its one era ends at 20 000
 
         $chain->attest(scWin(1));
 
         return [$chain, scWin(30)];
-    }, 9, 'share-cap'],
+    }, 9, 'key-closed'],
+    'rule 9: a game without a share has no pot' => [fn () => [scChain(scSeason(shares: ['rocket-league' => 60])), scWin()], 9, 'key-closed'],
 ]);
 
 test('rule 7 compares whole percents against subtree, and 101 switches it off', function () {
@@ -111,20 +112,20 @@ test('rule 7 compares whole percents against subtree, and 101 switches it off', 
         ->and(scChain()->attest(scWin(2, ['anchors' => ['alice' => ['board', 89], 'bob' => ['board', 100]]]))->mines())->toBeTrue();
 });
 
-test('eras halve by date and the reward is fixed at attestation', function () {
-    $chain = scChain();
-    $t0 = CarbonImmutable::parse(SC_T0);
+test('a key halves by what it mined, not by the date, and the reward is fixed at attestation', function () {
+    // Chess pot 40 000 of 100 000: era 1 ends at 20 000 mined, era 2 at 30 000.
+    $chain = scChain(scSeason(supply: 100_000, shares: ['chess' => 40, 'rocket-league' => 60]));
 
-    $last = $chain->attest(scWin(28 * 24 - 1 / 60));
-    $first = $chain->attest(scWin(28 * 24, ['winners' => ['carol'], 'losers' => ['dave'], 'pairing' => ['carol', 'dave'], 'gatekeepers' => ['carol', 'dave']]));
+    $first = $chain->attest(scWin(1));
+    $late = $chain->attest(scWin(100 * 24, ['winners' => ['carol'], 'losers' => ['dave'], 'pairing' => ['carol', 'dave'], 'gatekeepers' => ['carol', 'dave']]));
 
-    expect([$last->era, $last->rewardPerPlayer])->toBe([1, 20_000])
-        ->and([$first->era, $first->rewardPerPlayer])->toBe([2, 10_000])
-        ->and($chain->season->eraStart(2)->equalTo($t0->addDays(28)))->toBeTrue()
-        ->and([$chain->season->eraBudget(1), $chain->season->eraBudget(6), $chain->season->shareCap(40, 6)])->toBe([1_050_000, 32_812, 13_124]);
+    expect([$first->era, $first->rewardPerPlayer])->toBe([1, 20_000])
+        ->and([$late->era, $late->rewardPerPlayer])->toBe([2, 10_000])
+        ->and(array_map(fn (int $era): int => $chain->season->bound('chess', $era), range(1, 6)))->toBe([20_000, 30_000, 35_000, 37_500, 38_750, 39_375])
+        ->and([$chain->season->pot('chess'), $chain->season->eraSize('chess', 6), $chain->season->eraOf('chess', 39_374), $chain->season->eraOf('chess', 39_375)])->toBe([40_000, 625, 6, null]);
 });
 
-test('a halving never reverses: an attestation older than the previous one is refused', function () {
+test('an attestation older than the previous one is refused: the chain only grows forward', function () {
     $chain = scChain();
     $chain->attest(scWin(30));
 
@@ -162,7 +163,7 @@ test('a voided block keeps its height and its place in every counter', function 
 });
 
 test('the estimator warns about too short, too long, fast and idle seasons', function (int $weeks, float $perWeek, string $warning) {
-    $season = scSeason(shares: [], weeks: $weeks, halvingDays: 7);
+    $season = scSeason(shares: ['chess' => 100], weeks: $weeks);
     $streams = [['weight_key' => 'chess/blitz', 'game' => 'chess', 'winners' => 1, 'per_week' => $perWeek]];
 
     expect((new Estimator)->forecast($season, $season->genesisAt, $streams, 0, [])['warnings'])->toContain($warning);
