@@ -10,6 +10,7 @@ import './navigateGuard.js';
 
 import nostrLogin from './nostrLogin.js';
 import blockZeroCountdown from './blockZeroCountdown.js';
+import seasonStage from './seasonStage.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
@@ -62,6 +63,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('nostrLogin', nostrLogin);
     window.Alpine.data('siteModeration', siteModeration);
     window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
+    // The Block 0 stage (pages/admin/⚡stage): arm, the big button, the hold that releases a season.
+    window.Alpine.data('seasonStage', seasonStage);
     // A board game's lobby (pages/board/⚡lobby): online list and "Looking to play", as chessLobby.
     window.Alpine.data('boardLobby', boardLobby);
     window.Alpine.data('hyperLobby', hyperLobby);

@@ -1,0 +1,884 @@
+/*
+ * The Block 0 stage (resources/views/pages/admin/⚡stage.blade.php): one page for a projector.
+ *
+ * Everything on the stage is measured in `--u`, one hundredth of a 16:9 frame fitted into the viewport, so
+ * 1920 × 1080 and 1280 × 720 show the same picture (u = 19.2 px and 12.8 px). An upright screen (a phone)
+ * gets its own unit and its own stacking. The smallest text on the stage is 1.25u: 24 px at 1920 × 1080.
+ *
+ * The button is the season's first Mempool cube (the `.rv-cube` faces, scaled): a front, a top and a side.
+ * The dashed frames after it are the blocks nobody has mined yet. The tokens are the site's (R16); the one
+ * surface that is not, the white rehearsal band, is white on purpose: it must not look like the brand.
+ */
+@layer components {
+    /* The mode choice on the arming form (own controls, R11). */
+    .stg-mode {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 44px;
+        padding: 12px;
+        border: 1px solid var(--color-edge);
+        border-radius: 4px;
+        background: var(--color-ground);
+        color: var(--color-ink-2);
+        font-size: 13px;
+        line-height: 1.4;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 150ms ease-out, background-color 150ms ease-out;
+    }
+
+    .stg-mode > b {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-ink);
+        font-size: 14px;
+    }
+
+    /* The radio mark: a square that fills, so the choice is not carried by colour alone. */
+    .stg-mode > b::before {
+        content: "";
+        flex: none;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--color-edge);
+        border-radius: 2px;
+        box-shadow: inset 0 0 0 3px var(--color-ground);
+    }
+
+    .stg-mode[aria-checked="true"] {
+        border-color: var(--color-btc);
+        background: var(--color-btc-chip);
+    }
+
+    .stg-mode[aria-checked="true"] > b::before {
+        border-color: var(--color-btc);
+        background: var(--color-btc);
+    }
+
+    .stg-mode:focus-visible {
+        outline: 2px solid var(--color-btc-hi);
+        outline-offset: 2px;
+    }
+
+    /* "Rehearsal": words on white, in the admin panel, in the confirm and on the celebration. */
+    .stg-reh-chip {
+        display: inline-flex;
+        align-items: center;
+        align-self: flex-start;
+        margin: 0;
+        padding: 4px 10px;
+        border-radius: 2px;
+        background: var(--color-ink);
+        color: var(--color-ground);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+    }
+
+    /* ---- The stage ---- */
+    dialog.stg {
+        --u: min(1vw, 1.7778vh);
+        --pad: calc(5 * var(--u));
+        --face: calc(26 * var(--u));
+        --depth: calc(2.5 * var(--u));
+        --name: min(calc(7 * var(--u)), calc(118 * var(--u) / var(--len, 10)));
+        --title: min(calc(8 * var(--u)), calc(122 * var(--u) / var(--tlen, 17)));
+        --big: calc(2.5 * var(--u));
+        --mid: max(16px, calc(1.6 * var(--u)));
+        --small: max(14px, calc(1.25 * var(--u)));
+        --label: calc(3.4 * var(--u));
+        --band: calc(3.4 * var(--u));
+        --ctl: max(44px, calc(4.6 * var(--u)));
+        --hair: max(1px, calc(0.1 * var(--u)));
+        --radius: max(4px, calc(0.2 * var(--u)));
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        max-width: none;
+        height: 100dvh;
+        max-height: none;
+        margin: 0;
+        padding: var(--pad);
+        border: 0;
+        overflow: clip;
+        background: var(--color-ground);
+        color: var(--color-ink);
+        font-family: var(--font-mono);
+        font-size: var(--mid);
+        line-height: 1.4;
+    }
+
+    dialog.stg[open] {
+        display: flex;
+        flex-direction: column;
+    }
+
+    dialog.stg:focus {
+        outline: none;
+    }
+
+    /* The rehearsal band: across the whole top, in the stage's own padding. */
+    .stg-reh {
+        display: flex;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        gap: calc(2 * var(--u));
+        min-height: var(--band);
+        margin: calc(-1 * var(--pad)) calc(-1 * var(--pad)) max(calc(1.5 * var(--u)), calc(var(--pad) - var(--band)));
+        padding: 0 var(--pad);
+        background: var(--color-ink);
+        color: var(--color-ground);
+        font-family: var(--font-display);
+        font-size: max(16px, calc(1.5 * var(--u)));
+        font-weight: 700;
+        line-height: 1.2;
+        text-align: center;
+    }
+
+    .stg-reh::before,
+    .stg-reh::after {
+        content: "";
+        flex: 1 1 0;
+        align-self: stretch;
+        min-width: calc(2 * var(--u));
+        background: repeating-linear-gradient(-45deg, var(--color-ground) 0 calc(1 * var(--u)), transparent calc(1 * var(--u)) calc(2 * var(--u)));
+    }
+
+    dialog.stg .stg-reh-chip {
+        padding: calc(0.4 * var(--u)) calc(1 * var(--u));
+        font-size: var(--small);
+    }
+
+    .stg-brand {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: calc(1 * var(--u));
+        font-family: var(--font-display);
+        font-size: max(16px, calc(1.5 * var(--u)));
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        line-height: 1;
+    }
+
+    .stg-logo {
+        width: max(20px, calc(2.2 * var(--u)));
+        height: max(20px, calc(2.2 * var(--u)));
+    }
+
+    .stg-scene {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        padding-top: calc(2 * var(--u));
+    }
+
+    .stg-name,
+    .stg-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+    }
+
+    .stg-name {
+        font-size: var(--name);
+        white-space: nowrap;
+    }
+
+    .stg-title {
+        font-size: var(--title);
+        text-wrap: balance;
+    }
+
+    .stg-title:focus {
+        outline: none;
+    }
+
+    .stg-supply {
+        margin-top: calc(1 * var(--u));
+        color: var(--color-ink-2);
+        font-size: var(--big);
+        line-height: 1.2;
+    }
+
+    .stg-supply > b {
+        color: var(--color-btc);
+        font-family: var(--font-display);
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+    }
+
+    /* The chain: Block 0, then the frames of the blocks to come, running off the screen. */
+    .stg-chain {
+        display: flex;
+        flex: none;
+        align-items: flex-end;
+        gap: calc(2.5 * var(--u));
+        margin-top: auto;
+    }
+
+    .stg-cube {
+        position: relative;
+        flex: none;
+        width: calc(var(--face) + var(--depth));
+        height: calc(var(--face) + var(--depth));
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--color-on-btc);
+        font: inherit;
+        text-align: left;
+    }
+
+    button.stg-cube {
+        cursor: pointer;
+    }
+
+    .stg-cube::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: var(--depth);
+        background: var(--color-btc-hi);
+        clip-path: polygon(var(--depth) 0, 100% 0, calc(100% - var(--depth)) 100%, 0 100%);
+    }
+
+    .stg-cube::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: var(--depth);
+        height: 100%;
+        background: var(--color-btc-deep);
+        clip-path: polygon(0 var(--depth), 100% 0, 100% calc(100% - var(--depth)), 0 100%);
+    }
+
+    .stg-face {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        width: var(--face);
+        height: var(--face);
+        padding: calc(2.2 * var(--u));
+        background: var(--color-btc);
+        font-family: var(--font-display);
+        font-size: var(--label);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.08;
+        transition: transform 150ms ease-out, background-color 150ms ease-out;
+    }
+
+    button.stg-cube:hover .stg-face {
+        background: var(--color-btc-hi);
+    }
+
+    /* Pressed: the front moves into the cube. */
+    button.stg-cube:active .stg-face {
+        transform: translate(calc(0.4 * var(--depth)), calc(-0.4 * var(--depth)));
+    }
+
+    .stg-cube:focus-visible {
+        outline: max(2px, calc(0.25 * var(--u))) solid var(--color-btc-hi);
+        outline-offset: calc(0.6 * var(--u));
+    }
+
+    .stg-ghost {
+        flex: none;
+        width: calc(var(--face) * 0.62);
+        height: calc(var(--face) * 0.62);
+        overflow: visible;
+    }
+
+    .stg-ghost:nth-of-type(2) { width: calc(var(--face) * 0.46); height: calc(var(--face) * 0.46); }
+    .stg-ghost:nth-of-type(3) { width: calc(var(--face) * 0.34); height: calc(var(--face) * 0.34); }
+    .stg-ghost:nth-of-type(4) { width: calc(var(--face) * 0.25); height: calc(var(--face) * 0.25); }
+    .stg-ghost:nth-of-type(5) { width: calc(var(--face) * 0.18); height: calc(var(--face) * 0.18); }
+
+    .stg-ghost > rect {
+        fill: none;
+        stroke: var(--color-edge);
+        stroke-width: 1.2;
+        stroke-dasharray: 6 6;
+        animation: stg-march 2.4s linear infinite;
+    }
+
+    /* The one idle motion: the frames of the unmined blocks walk on the spot. Calm, never a flash. */
+    @keyframes stg-march {
+        to { stroke-dashoffset: -12; }
+    }
+
+    /* ---- Mined ---- */
+    .stg-cube.is-mined .stg-face {
+        justify-content: space-between;
+        animation: stg-land 300ms ease-out both;
+    }
+
+    .stg-cube.is-mined .stg-face > b {
+        font-size: calc(11 * var(--u));
+        line-height: 0.9;
+    }
+
+    .stg-cube.is-mined .stg-face > span {
+        font-family: var(--font-mono);
+        font-size: var(--small);
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    @keyframes stg-land {
+        from { transform: translateY(calc(-2 * var(--u))); }
+    }
+
+    /* The one moment: eight chips leave the block once. */
+    .stg-spark {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: calc(1.2 * var(--u));
+        height: calc(1.2 * var(--u));
+        background: var(--color-btc-hi);
+        opacity: 0;
+        animation: stg-spark 900ms ease-out 150ms 1 both;
+    }
+
+    .stg-spark:nth-of-type(1) { --dx: -20; --dy: -18; }
+    .stg-spark:nth-of-type(2) { --dx: -6; --dy: -24; }
+    .stg-spark:nth-of-type(3) { --dx: 10; --dy: -22; }
+    .stg-spark:nth-of-type(4) { --dx: 24; --dy: -14; }
+    .stg-spark:nth-of-type(5) { --dx: 28; --dy: 2; }
+    .stg-spark:nth-of-type(6) { --dx: 22; --dy: -26; }
+    .stg-spark:nth-of-type(7) { --dx: -24; --dy: -4; }
+    .stg-spark:nth-of-type(8) { --dx: 2; --dy: -30; }
+
+    @keyframes stg-spark {
+        0% { transform: translate(0, 0); opacity: 1; }
+        100% { transform: translate(calc(var(--dx) * var(--u)), calc(var(--dy) * var(--u))); opacity: 0; }
+    }
+
+    .stg-told {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: calc(1.6 * var(--u));
+        min-width: 0;
+        max-width: calc(54 * var(--u));
+        margin-left: calc(1.5 * var(--u));
+    }
+
+    .stg-quote {
+        font-size: calc(2.2 * var(--u));
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+    }
+
+    .stg-quote.is-long {
+        font-size: calc(1.6 * var(--u));
+    }
+
+    .stg-line,
+    .stg-reason {
+        max-width: 68ch;
+        color: var(--color-ink-2);
+        font-size: var(--mid);
+    }
+
+    .stg-reason {
+        margin-top: calc(2 * var(--u));
+        color: var(--color-ink);
+        font-size: calc(2.2 * var(--u));
+        line-height: 1.3;
+    }
+
+    /* A refusal is said, not celebrated: a smaller title than the mined block's. */
+    .stg-failed .stg-title {
+        font-size: calc(5 * var(--u));
+    }
+
+    .stg-failed .stg-reason,
+    .stg-failed .stg-line {
+        max-width: calc(62 * var(--u));
+    }
+
+    /* What stands there now, in the corner the chain runs to. */
+    .stg-failed .stg-chain {
+        position: absolute;
+        right: var(--pad);
+        bottom: var(--pad);
+        --face: calc(18 * var(--u));
+        --depth: calc(1.8 * var(--u));
+    }
+
+    .stg-failed .stg-cube.is-mined .stg-face > b {
+        font-size: calc(8 * var(--u));
+    }
+
+    .stg-failed .stg-line {
+        margin-top: calc(1 * var(--u));
+    }
+
+    .stg-next {
+        display: flex;
+        flex-wrap: wrap;
+        gap: calc(1.2 * var(--u));
+    }
+
+    .stg-failed .stg-next {
+        margin-top: calc(2.5 * var(--u));
+    }
+
+    /* The block that was not mined: its frame, standing still. */
+    .stg-unmined {
+        flex: none;
+        width: var(--face);
+        height: var(--face);
+        border: max(2px, calc(0.2 * var(--u))) dashed var(--color-edge);
+    }
+
+    /* Buttons on the stage: the site's `.rv-b` at the stage's size. Never a pill, never a wrapped label. */
+    .stg-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--ctl);
+        padding: 0 calc(2.2 * var(--u));
+        border: var(--hair) solid var(--color-btc);
+        border-radius: var(--radius);
+        background: var(--color-btc);
+        color: var(--color-on-btc);
+        font: inherit;
+        font-size: var(--mid);
+        font-weight: 700;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    }
+
+    .stg-btn:hover {
+        border-color: var(--color-btc-hi);
+        background: var(--color-btc-hi);
+        color: var(--color-on-btc);
+    }
+
+    .stg-btn.is-quiet {
+        border-color: var(--color-edge);
+        background: transparent;
+        color: var(--color-ink);
+    }
+
+    .stg-btn.is-quiet:hover {
+        border-color: var(--color-ink-2);
+        background: var(--color-row-hover);
+        color: var(--color-ink);
+    }
+
+    .stg-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .stg-btn:focus-visible,
+    .stg-hold:focus-visible {
+        outline: max(2px, calc(0.2 * var(--u))) solid var(--color-btc-hi);
+        outline-offset: max(2px, calc(0.3 * var(--u)));
+    }
+
+    /* Fullscreen refused: one line in the stage's bottom margin, under the button, for the board member. */
+    .stg-fs {
+        position: absolute;
+        right: var(--pad);
+        bottom: calc(0.4 * var(--u));
+        left: var(--pad);
+        z-index: 2;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: calc(1 * var(--u));
+        margin: 0;
+        padding: calc(0.3 * var(--u)) calc(1.2 * var(--u));
+        border: var(--hair) solid var(--color-line);
+        border-radius: var(--radius);
+        background: var(--color-card);
+        font-size: var(--small);
+    }
+
+    .stg-fs > span {
+        flex: 1 1 20ch;
+    }
+
+    .stg-fs .stg-btn {
+        min-height: max(44px, calc(3.2 * var(--u)));
+        font-size: var(--small);
+    }
+
+    /* ---- The confirm: beside the button, never on it ---- */
+    dialog.stg-confirm {
+        position: fixed;
+        inset: 0;
+        width: calc(48 * var(--u));
+        max-width: none;
+        height: fit-content;
+        /* Centred, and never under the rehearsal band (3.4u). */
+        max-height: calc(100dvh - 7.6 * var(--u));
+        margin: auto var(--pad) auto auto;
+        padding: 0;
+        border: var(--hair) solid var(--color-line);
+        border-radius: var(--radius);
+        overflow: auto;
+        background: var(--color-card);
+        color: var(--color-ink);
+    }
+
+    dialog.stg-confirm::backdrop {
+        background: rgb(10 10 11 / 0.78);
+    }
+
+    .stg-sheet {
+        display: flex;
+        flex-direction: column;
+        gap: calc(2 * var(--u));
+        padding: calc(2.2 * var(--u));
+    }
+
+    /* The joke first, the question under it, the controls last: the eye ends on the hold. */
+    .stg-meme {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: calc(1.4 * var(--u));
+        order: -1;
+    }
+
+    .stg-clip {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: calc(1 * var(--u));
+        padding: calc(1.2 * var(--u));
+        border-left: max(3px, calc(0.3 * var(--u))) solid var(--color-edge);
+        background: var(--color-raised);
+    }
+
+    .stg-clip.is-ours {
+        border-left-color: var(--color-btc);
+        background: var(--color-btc-tint);
+    }
+
+    /* A long genesis message is cut here, so the hold never leaves the screen; the celebration shows all of it. */
+    .stg-clip > blockquote {
+        display: -webkit-box;
+        overflow: hidden;
+        font-size: var(--mid);
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+        line-clamp: 4;
+    }
+
+    .stg-clip > figcaption {
+        display: flex;
+        align-items: center;
+        gap: calc(1 * var(--u));
+        color: var(--color-ink-2);
+        font-size: var(--small);
+        line-height: 1.3;
+    }
+
+    /* The block each headline stands in, drawn small: grey for 2009, the season's orange for today. */
+    .stg-mini {
+        --mini: calc(2.6 * var(--u));
+        --lift: calc(0.5 * var(--u));
+        position: relative;
+        flex: none;
+        width: calc(var(--mini) + var(--lift));
+        height: calc(var(--mini) + var(--lift));
+        color: var(--color-ink-2);
+    }
+
+    .stg-clip.is-ours .stg-mini {
+        color: var(--color-btc);
+    }
+
+    .stg-mini::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: currentColor;
+        opacity: 0.55;
+        clip-path: polygon(var(--lift) 0, 100% 0, 100% calc(100% - var(--lift)), calc(100% - var(--lift)) 100%, calc(100% - var(--lift)) var(--lift), 0 var(--lift));
+    }
+
+    .stg-mini::after {
+        content: "0";
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        display: grid;
+        place-items: center;
+        width: var(--mini);
+        height: var(--mini);
+        background: currentColor;
+        font-family: var(--font-display);
+        font-size: calc(1.5 * var(--u));
+        font-style: normal;
+        font-weight: 700;
+        line-height: 1;
+        -webkit-text-fill-color: var(--color-ground);
+    }
+
+    .stg-ask {
+        display: flex;
+        flex-direction: column;
+        gap: calc(1 * var(--u));
+    }
+
+    .stg-ask > h2 {
+        font-family: var(--font-display);
+        font-size: calc(2.6 * var(--u));
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        text-wrap: balance;
+    }
+
+    /* The season's name stays in one piece. */
+    .stg-nb {
+        white-space: nowrap;
+    }
+
+    .stg-ask > p:not(.stg-reh-chip) {
+        font-size: var(--mid);
+    }
+
+    .stg-acts {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: calc(0.8 * var(--u)) calc(1.4 * var(--u));
+        align-items: center;
+        margin-top: calc(1 * var(--u));
+    }
+
+    /* Under both controls; in the source it stands between them, where a screen reader wants it. */
+    .stg-how.is-off {
+        visibility: hidden;
+    }
+
+    .stg-how {
+        grid-column: 1 / -1;
+        order: 1;
+        color: var(--color-ink-2);
+        font-size: var(--small);
+    }
+
+    /* The hold: a track that fills from the left while it is pressed. */
+    .stg-hold {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--ctl);
+        padding: 0 calc(1.2 * var(--u));
+        border: max(2px, calc(0.15 * var(--u))) solid var(--color-btc);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--color-ground);
+        color: var(--color-ink);
+        font: inherit;
+        font-size: var(--mid);
+        font-weight: 700;
+        white-space: nowrap;
+        cursor: pointer;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        transition: opacity 200ms ease-out, border-color 200ms ease-out;
+    }
+
+    .stg-hold > span {
+        position: relative;
+    }
+
+    .stg-hold-fill {
+        position: absolute;
+        inset: 0;
+        background: var(--color-cube-side-mined);
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 150ms ease-out;
+    }
+
+    .stg-hold.is-holding .stg-hold-fill {
+        transform: scaleX(1);
+        transition: transform 2000ms linear;
+    }
+
+    .stg-hold.is-sent .stg-hold-fill {
+        transform: scaleX(1);
+        transition: none;
+    }
+
+    /* The first second after the confirm opened: the control is there, and takes nothing yet. */
+    .stg-hold.is-cold {
+        border-color: var(--color-edge);
+        cursor: default;
+        opacity: 0.55;
+    }
+
+    .stg-hold.is-sent {
+        cursor: progress;
+    }
+
+    /* ---- An upright screen ---- */
+    @media (max-aspect-ratio: 1/1) {
+        dialog.stg {
+            --u: min(2.2vw, 1.15vh);
+            --pad: calc(2.5 * var(--u));
+            --face: calc(34 * var(--u));
+            --depth: calc(2.6 * var(--u));
+            --name: min(calc(5 * var(--u)), calc(52 * var(--u) / var(--len, 10)));
+            --title: calc(4.4 * var(--u));
+            --label: calc(4.2 * var(--u));
+            --band: calc(4.6 * var(--u));
+        }
+
+        .stg-supply {
+            font-size: calc(2.6 * var(--u));
+        }
+
+        /* No margin to stand in on a phone: the line takes its own row under the button. */
+        .stg-fs {
+            position: static;
+            flex: none;
+            margin-top: calc(1.5 * var(--u));
+            padding: calc(1 * var(--u)) calc(1.2 * var(--u));
+        }
+
+        .stg-supply > b {
+            display: block;
+            font-size: calc(3.6 * var(--u));
+        }
+
+        dialog.stg-confirm {
+            width: auto;
+            /* Under the rehearsal band, at the top: the hold stays above the button's place. */
+            max-height: calc(100dvh - var(--band) - var(--u) - var(--pad));
+            margin: calc(var(--band) + var(--u)) var(--pad) auto;
+        }
+
+        /* The controls stay above the button's place: the question and the hold first, the joke under them. */
+        .stg-meme {
+            grid-template-columns: 1fr;
+            order: 0;
+        }
+
+        .stg-acts {
+            grid-template-columns: minmax(0, 1fr);
+            margin-top: calc(0.6 * var(--u));
+        }
+
+        .stg-how {
+            order: 0;
+        }
+
+        .stg-ask > h2 {
+            font-size: calc(2.9 * var(--u));
+        }
+
+        .stg-hold {
+            min-height: 56px;
+        }
+
+        .stg-done .stg-chain {
+            flex-direction: column-reverse;
+            align-items: flex-start;
+            flex: 1 1 auto;
+            min-height: 0;
+            margin-top: calc(2 * var(--u));
+        }
+
+        .stg-done .stg-cube {
+            --face: calc(18 * var(--u));
+            margin-top: auto;
+        }
+
+        .stg-cube.is-mined .stg-face {
+            padding: calc(1.4 * var(--u));
+        }
+
+        .stg-cube.is-mined .stg-face > b {
+            font-size: calc(8 * var(--u));
+        }
+
+        .stg-cube.is-mined .stg-face > span {
+            font-size: 14px;
+        }
+
+        .stg-told {
+            flex: none;
+            justify-content: flex-start;
+            max-width: none;
+            margin-left: 0;
+        }
+
+        .stg-quote,
+        .stg-reason {
+            font-size: max(16px, calc(2.2 * var(--u)));
+        }
+
+        .stg-quote.is-long {
+            font-size: 16px;
+        }
+
+        .stg-failed .stg-title {
+            font-size: calc(4 * var(--u));
+        }
+
+        .stg-failed .stg-reason,
+        .stg-failed .stg-line {
+            max-width: none;
+        }
+
+        .stg-failed .stg-chain {
+            --face: calc(12 * var(--u));
+            --depth: calc(1.4 * var(--u));
+        }
+
+        .stg-failed .stg-cube.is-mined .stg-face > b {
+            font-size: calc(5 * var(--u));
+        }
+
+        .stg-failed .stg-cube.is-mined .stg-face > span {
+            display: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .stg-ghost > rect,
+        .stg-cube.is-mined .stg-face {
+            animation: none;
+        }
+
+        .stg-spark {
+            display: none;
+        }
+
+        .stg-face {
+            transition: none;
+        }
+    }
+}

@@ -23,6 +23,8 @@ return [
     'admin/⚡payouts.blade.php' => ['T-Admin-List', 'AdminPayouts › AdminPayouts'],
     'admin/⚡scores.blade.php' => ['T-Admin-List', 'AdminScores › AdminScores'],
     'admin/⚡season.blade.php' => ['T-Admin-Form', 'AdminSeason › AdminSeason'],
+    // The Block 0 stage (2026-11-18): arming is the admin form; the fullscreen stage has no canvas board yet (NEU, Scope).
+    'admin/⚡stage.blade.php' => ['T-Admin-Form + stage (NEU, Scope)', 'AdminSeason › AdminSeason'],
     'admin/⚡settings.blade.php' => ['T-Admin-Form', 'AdminSettings › AdminSettings'],
     'admin/⚡status.blade.php' => ['T-Admin-Status', 'AdminOverview › AdminOverview'],
     'admin/⚡tournament-create.blade.php' => ['T-Admin-Form', 'AdminTournamentForm › AdminTournamentForm'],

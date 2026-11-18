@@ -20,6 +20,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // The season chain (P7c): status, estimator, Block 0 release, rule changes.
     Route::livewire('season', 'pages::admin.season')->name('season');
+    // The Block 0 stage: the release as one big button on a projected screen, for board members (SeasonRelease::refusal()).
+    Route::livewire('season/stage', 'pages::admin.stage')->name('season.stage');
 
     // Weekly events (P10): recurring slots; the scheduler dates them (events:schedule-weekly).
     Route::livewire('events', 'pages::admin.events')->name('events');
