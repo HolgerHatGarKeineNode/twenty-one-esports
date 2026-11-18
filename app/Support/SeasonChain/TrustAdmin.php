@@ -176,11 +176,11 @@ final class TrustAdmin
      * neither an ended clan (P7d gate, Low A) nor a deleted account (P7e)
      * takes anybody out of the guard.
      *
-     * @param  list<string>  $pubkeys
+     * Bars::set() and Bars::lift() ask the same question for a bar by hand.
      *
-     * @throws TrustAdminRefused
+     * @param  list<string>  $pubkeys
      */
-    private function assertNotOwn(User $admin, array $pubkeys): void
+    public static function isOwn(User $admin, array $pubkeys): bool
     {
         $since = Seasons::live()?->genesis_at;
         $departures = fn () => ClanDeparture::query()->when($since !== null, fn ($query) => $query->where('left_at', '>=', $since));
@@ -196,7 +196,17 @@ final class TrustAdmin
             ...$left->pluck('pubkey')->filter()->all(),
         ];
 
-        if (array_intersect($pubkeys, $own) !== []) {
+        return array_intersect($pubkeys, $own) !== [];
+    }
+
+    /**
+     * @param  list<string>  $pubkeys
+     *
+     * @throws TrustAdminRefused
+     */
+    private function assertNotOwn(User $admin, array $pubkeys): void
+    {
+        if (self::isOwn($admin, $pubkeys)) {
             throw new TrustAdminRefused(__('You cannot decide about yourself or your own clan. Another admin has to.'));
         }
     }
