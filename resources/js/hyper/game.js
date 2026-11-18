@@ -106,6 +106,8 @@ function clanLogo(team, size = 28) {
     return `<span class="clan-logo clan-tag" style="width:${size}px;height:${size}px">${esc(side?.tag ?? '🤖')}</span>`;
 }
 const playing = () => ME !== null && !!mySeat() && !mySeat().bot && !mySeat().left;
+/** The viewer's seat is still in the game: a seat knocked out leaves without a forfeit, so nothing warns it. */
+const stillIn = () => playing() && !mySeat().out;
 /** The server already gave this player the turn and its clock runs, while the page may still show earlier seats. */
 const myClockRuns = () => playing() && isMe(live.seat) && !G.over;
 /**
@@ -1192,8 +1194,8 @@ export function render() {
     $$('.qty button').forEach((x) => x.classList.toggle('on', x.dataset.q === UI.qty));
     $('#undo-btn').hidden = !(L && L.can_undo);
     $('#leave-btn')?.toggleAttribute('hidden', G.over || !playing());
-    // The rated leave dialog and the clock's forfeit line only while the viewer still plays the seat.
-    if (G.over || !playing()) { $('#leave-dlg')?.setAttribute('hidden', ''); $('#forfeit-note')?.setAttribute('hidden', ''); }
+    // The rated leave dialog and the clock's forfeit line only while the viewer still plays a seat that is in the game.
+    if (G.over || !stillIn()) { $('#leave-dlg')?.setAttribute('hidden', ''); $('#forfeit-note')?.setAttribute('hidden', ''); }
     const mainOk = !!L && L.can_end_phase;
     $('#main-btn').disabled = !mainOk;
     $('#main-t').textContent = G.over ? t('Match over') : !myTurn() ? t(':name moves', { name: nameOf(G.cur) }) : G.phase === 'buy' ? t('To the attack') : G.phase === 'attack' ? t('End attack') : t('End turn');
@@ -1354,6 +1356,7 @@ function bindControls() {
     if (leave) {
         // A rated match: leaving is a forfeit, so the dialog the page rendered asks first (its lines are the player's
         // own numbers); the server refuses a rated leave without `confirm`. Staying holds the focus (R18).
+        // A seat knocked out forfeits nothing: it leaves like a casual seat, with the second click.
         const dialog = $('#leave-dlg');
         const send = async (body) => {
             const r = await NET.post(CFG.urls.leave, body);
@@ -1364,7 +1367,7 @@ function bindControls() {
             $('#leave-confirm').onclick = async () => { $('#leave-confirm').disabled = true; await send({ confirm: true }); $('#leave-confirm').disabled = false; dialog.hidden = true; };
         }
         leave.onclick = async () => {
-            if (dialog) { dialog.hidden = false; $('#leave-stay').focus(); return; }
+            if (dialog && stillIn()) { dialog.hidden = false; $('#leave-stay').focus(); return; }
             // The first click asks (for 6 s), the second leaves.
             if (leave.dataset.armed !== '1') {
                 leave.dataset.armed = '1'; leave.classList.add('armed'); toast(t('Really leave? Click again: a bot takes over.'));

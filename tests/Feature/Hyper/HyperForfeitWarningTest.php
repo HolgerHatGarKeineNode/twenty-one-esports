@@ -4,6 +4,7 @@ use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\User;
 use App\Support\FairPlay\FairPlay;
+use App\Support\Hyper\HyperMatches;
 use Tests\Support\HyperOn;
 
 /*
@@ -134,6 +135,26 @@ test('only a player who still plays a seat of a running rated match gets the dia
     $this->actingAs($anna)->get(route('hyper.match', $match))->assertOk()
         ->assertDontSee('data-test="hyper-leave-dialog"', false)
         ->assertDontSee('data-test="hyper-forfeit-note"', false);
+});
+
+test('a seat knocked out of a rated match gets no dialog and no clock line, and leaves without the confirmation and without a forfeit', function () {
+    openSeason(ladders: false);
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+    $match = HyperOn::ending(app(HyperMatches::class)->create([['user' => $anna], ['user' => $bert], ['user' => $carl]], seed: 7), winner: 0, runnerUp: 1, out: [2 => 3]);
+
+    $this->actingAs($carl)->get(route('hyper.match', $match))->assertOk()
+        ->assertSee('data-test="hyper-leave"', false)
+        ->assertDontSee('data-test="hyper-leave-dialog"', false)
+        ->assertDontSee('data-test="hyper-forfeit-note"', false);
+
+    // Bert is still in the game: he is asked as before.
+    $this->actingAs($bert)->get(route('hyper.match', $match))->assertOk()->assertSee('data-test="hyper-leave-dialog"', false);
+    $this->actingAs($bert)->postJson(route('hyper.leave', $match))->assertStatus(422)->assertJsonPath('reason', 'confirm_forfeit');
+
+    $this->actingAs($carl)->postJson(route('hyper.leave', $match))->assertOk()->assertJsonPath('snapshot.seats.2.bot', true);
+
+    expect($match->refresh()->seats->firstWhere('user_id', $carl->id)->takeover)->toBe(HyperSeat::TAKEOVER_LEFT)
+        ->and(FairPlay::forfeitsInWindow($carl))->toBe(0);
 });
 
 test('a casual leave is as before: no dialog, no confirmation, a bot takes over and nothing counts', function () {

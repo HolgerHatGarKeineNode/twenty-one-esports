@@ -356,7 +356,8 @@ class HyperMatchController extends Controller
     /**
      * The player leaves their seat. In a rated match that is a forfeit (a loss, no season block for the table, and it
      * counts toward the fair-play lock), so it needs `{"confirm": true}`, sent by the page's dialog: without it the
-     * answer is 422 `confirm_forfeit` with the consequences as they stand now (`warning`), and nothing changes.
+     * answer is 422 `confirm_forfeit` with the consequences as they stand now (`warning`), and nothing changes. A seat
+     * knocked out already forfeits nothing by leaving and is not asked.
      */
     public function leave(Request $request, HyperMatch $match, HyperMatches $matches): JsonResponse
     {
@@ -456,13 +457,14 @@ class HyperMatchController extends Controller
 
     /**
      * What leaving costs the viewer (FairPlay::forfeitWarning()), with the line for the turn clock: only for a seat
-     * the viewer still plays in a running rated match, null for everybody else.
+     * the viewer still plays in a running rated match and that is still in the game, null for everybody else (a seat
+     * knocked out has its place and leaves without a forfeit).
      *
      * @return array{count: int, limit: int, days: int, lock_days: int, locks: bool, lines: list<string>, timeouts: string}|null
      */
     private function forfeitWarning(HyperMatch $match, ?User $viewer): ?array
     {
-        if ($viewer === null || ! $match->rated || ! $match->isActive() || $match->handSeatOf($viewer) === null) {
+        if ($viewer === null || ! $match->rated || ! $match->isActive() || $match->handSeatOf($viewer) === null || $match->seatOf($viewer)?->place !== null) {
             return null;
         }
 

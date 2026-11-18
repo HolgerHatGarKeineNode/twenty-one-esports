@@ -222,7 +222,8 @@ for the game while the league has switched it on, and none otherwise.
   fails a rule plays for its points or Elo and mines nothing.
 - **Only a fully played match mines** (user, 2026-11-18). A forfeiter never wins, and a forfeit of any seat, by
   leaving or by letting its turns run out, makes the match a `forfeit` for rule 2: it mines nothing, at a table of two
-  as at a table of six, also when other losers stayed. The rating of the match is untouched. And the winner took at
+  as at a table of six, also when other losers stayed. A seat that was knocked out has played to its end: when its
+  player leaves afterwards, that is no forfeit and the match still mines. The rating of the match is untouched. And the winner took at
   least one territory in the match (`no-conquest`): a match of passed turns that the round limit decides mines nothing.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
