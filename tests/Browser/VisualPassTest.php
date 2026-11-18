@@ -24,7 +24,7 @@ pest()->group('browser');
 | with covers, faces in the chess rows of the match list and on the ladder,
 | covers on /live and in the rules' games table, halving and cap bars on
 | /mining; part C: home's line per game, the state bar, the next tournament
-| off air, the share cap split, the clans' line, the empty states and the
+| off air, the split of the supply by share, the clans' line, the empty states and the
 | casual game covers. Each page at 1440 and 375 in English and 375 in German: its
 | picture is there, painted and inside the window, nothing is wider than the
 | window, and the console and the answers stay clean, with a positive control.
@@ -103,6 +103,8 @@ test('every touched page shows its pictures at 1440 and 375, German at 375, with
         '/ladder/chess/blitz' => ['main img[data-avatar]', 6],
         '/live' => ['[data-test=live-tournament-cover], [data-test=live-offline-next-cover]', 2],
         '/rules' => ['[data-test=rules-table-cover]', 7],
+        // One pay bar per era of a game (6, `season-chain-v2`: the eras are a count, not weeks) and the split of the supply
+        // by share; tests/Feature/VisualPassTest.php counts the same 6 + 1 in the markup.
         '/mining' => ['[data-test=era-pay-bar], [data-test=share-cap-bar]', 7],
         '/clans' => ['[data-test=clan-card-mark], [data-test=clan-spotlight-mark]', 1],
         '/challenges/casual' => ['[data-test^=casual-game-] picture', 3],

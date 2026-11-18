@@ -29,7 +29,10 @@ pest()->group('browser');
 | Every board game knob (a weight per game, the share and daily limit of
 | their group) is in the chain draft for Block 0: the board fills in the
 | proposal and saves it through a Livewire round-trip, and the log shows the
-| shrunk shares. In a live season the rule change adds them. Measured at 390
+| shrunk shares. That draft is the only place a game gets a share: the
+| shares are fixed at Block 0 (`season-chain-v2`), so in a live season a
+| rule change gives the board games their weights and nothing else, and the
+| form offers no share field. Measured at 390
 | and 1440 px, in English and German; console, uncaught errors and every
 | answer >= 400 are collected (BrowserConsole) and stay empty, with a
 | positive control on the same page. And two players who list each other
@@ -148,29 +151,30 @@ test('the board fills in the board games\' proposal on the chain draft and saves
     'desktop 1440, de' => [1440, 900, 'de'],
 ]);
 
-test('in a live season the board adds the board games by a rule change, clean at 390 and 1440 px', function (int $width, int $height, string $locale) {
+test('in a live season whose Block 0 gave the board games a share the board lets them mine by a rule change of weights; the form offers no share, clean at 390 and 1440 px', function (int $width, int $height, string $locale) {
     $board = User::factory()->withPubkey((new TestSigner)->pubkey)->create(['name' => 'vorstand', 'timezone' => 'UTC']);
     config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)], 'esports.trust.nsec' => (new TestSigner)->secret]);
-    openSeason();
+    // Block 0 signed the board games' share in the draft; their weights were left out of it.
+    openSeason(seasonGenesisWithout('nine-mens-morris/correspondence', 'checkers/correspondence'));
 
     $page = boardMiningAdminPage($board, $width, $height, $locale);
+    $shareFields = (int) $page->evaluate('() => document.querySelectorAll("[data-test^=change-share-]").length');
     $page->locator('[data-test=change-weight-nine-mens-morris-correspondence]')->fill('1');
     $page->locator('[data-test=change-weight-checkers-correspondence]')->fill('1');
-    $page->locator('[data-test=change-share-chess]')->fill('30');
-    $page->locator('[data-test=change-share-board-games]')->fill('5');
-    $page->locator('[data-test=change-daily-board-games]')->fill('3');
     $page->locator('[data-test=change-reason]')->fill('Board games mine from today.');
     $page->locator('[data-test=save-change]')->click();
     BrowserWait::until($page, '() => document.body.innerText.includes("Board games mine from today.")', 10_000);
-    $m = boardMiningAdminMeasure($page, ['season-change', 'change-weight-nine-mens-morris-correspondence', 'change-share-board-games', 'change-daily-board-games', 'save-change']);
+    $m = boardMiningAdminMeasure($page, ['season-change', 'change-weight-nine-mens-morris-correspondence', 'change-daily-board-games', 'shares-fixed', 'save-change']);
+    $changeError = (bool) $page->evaluate('() => document.querySelector("[data-test=change-error]") !== null');
 
     fwrite(STDERR, "board mining change {$locale} {$width}x{$height}: ".json_encode($m).PHP_EOL);
 
-    expect(SeasonParameterChange::query()->sole()->parameters)->toBe([
-        'weights' => ['nine-mens-morris/correspondence' => 1000, 'checkers/correspondence' => 1000],
-        'shares' => ['chess' => 30, 'board-games' => 5],
-        'daily' => ['board-games' => 3],
-    ])
+    expect($shareFields)->toBe(0)
+        ->and($changeError)->toBeFalse()
+        // Weights and nothing else: the shares stay those of Block 0.
+        ->and(SeasonParameterChange::query()->sole()->parameters)->toBe([
+            'weights' => ['nine-mens-morris/correspondence' => 1000, 'checkers/correspondence' => 1000],
+        ])
         ->and($m['lang'])->toBe($locale)
         ->and($m['scroll'])->toBeLessThanOrEqual($m['client'])
         ->and($m['errors'])->toBe([])

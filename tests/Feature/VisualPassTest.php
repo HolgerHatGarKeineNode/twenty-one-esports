@@ -59,8 +59,14 @@ test('off air, /live shows the next tournament with its cover and its places', f
         ->assertSee('0 of 12 spots taken');
 });
 
-test('the season page splits the share cap per era as a bar', function () {
-    $this->get(route('mining'))->assertOk()->assertSeeHtml('data-test="share-cap-bar"');
+test('the season page shows the shares of the supply as one bar and what a win pays as a bar per era', function () {
+    // The pay bars follow the first game that mines: so rated chess is open here.
+    config(['esports.chess.rated_queue' => true]);
+    $html = (string) $this->get(route('mining'))->assertOk()->assertSeeHtml('data-test="share-cap-bar"')->getContent();
+
+    // One bar per era of a game (6 by default) and the split of the supply: the 7 pictures tests/Browser/VisualPassTest.php waits for.
+    expect(substr_count($html, 'data-test="era-pay-bar"'))->toBe(6)
+        ->and(substr_count($html, 'data-test="share-cap-bar"'))->toBe(1);
 });
 
 test('the clans page folds its numbers into one line above the clan cards, and shows the map only with a meetup pin', function () {
