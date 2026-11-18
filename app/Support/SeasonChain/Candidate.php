@@ -40,7 +40,7 @@ final class Candidate
      * @param  string  $match  the challenge the result belongs to (fees are paid per challenge)
      * @param  string  $game  `chess`, `rocket-league`: share cap and daily limit are per share key (the game, or its group)
      * @param  string  $weightKey  `<game>/<mode>` of the ladder, e.g. `chess/blitz`
-     * @param  ?int  $moves  full moves of the counted chess game record; null for a series
+     * @param  ?int  $moves  full moves of the counted chess game record, a board game's count (BoardGame::minedMoves()); null for a series
      * @param  list<string>  $winners  the winning players (a series: the winning roster)
      * @param  list<string>  $losers  the losing players
      * @param  ?string  $winningSide  the winning lineup (team results) or the winner's clan

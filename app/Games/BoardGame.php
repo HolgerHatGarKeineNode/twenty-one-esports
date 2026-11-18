@@ -66,6 +66,18 @@ abstract class BoardGame implements Game
     abstract public function rules(): BoardRules;
 
     /**
+     * The moves of a finished game that consensus rule 2 of the season chain holds against the season's `moves`
+     * minimum (SeasonChains::boardCandidate()): the full moves, as in chess, so 20 moves are 39 plies or more.
+     * A game whose sides do not move in turn says how its plies count (Blockspace).
+     *
+     * @param  list<string>  $moves  every move of the game, in the order played
+     */
+    public function minedMoves(array $moves): int
+    {
+        return intdiv(count($moves) + 1, 2);
+    }
+
+    /**
      * Whether a tournament or cup pairing plays two games with the colours
      * swapped (plan "Blockli", P4): for a game where the first move is an
      * advantage. False plays one game, as nine men's morris and checkers do.

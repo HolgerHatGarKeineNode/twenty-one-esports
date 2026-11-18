@@ -176,9 +176,11 @@ The rules marked "rev. 9.23" add one game channel, `blockli` (Blockli, a board g
 revision 9.3 and like the other board games only while the league runs it. Nothing else changes.
 
 The rules marked "rev. 9.26" add one game channel, `blockspace` (Blockspace, a board game by StackingJones), on the
-terms of revision 9.3 and like the other board games only while the league runs it. Nothing else changes: Blockspace
-has no season weight yet, so its ladders are not opened and its games are casual; no ladder, attestation or block
-carries it until a later revision does.
+terms of revision 9.3 and like the other board games only while the league runs it. Blockspace and Go on its three
+board sizes (`go-9`, `go-13`, `go-19`) are board games of revision 9.13 in every respect: their ladders, rated games,
+attestations and blocks are a board game's, in the share group `board-games`, and they mine while the season gives
+their game and mode a `weight`. One rule is their own (draft): for consensus rule 2 a Blockspace game counts every
+transaction a side set as one move, and a pass as none (see rule 2).
 
 The rules marked "rev. 9.25" give Blockli rapid the clan team matches of revision 9.22, on the same terms. They apply
 to every Blockli team match whose challenge the league signs after it adopts revision 9.25, and only while the league
@@ -224,9 +226,16 @@ for the game while the league has switched it on, and none otherwise.
   least one territory in the match (`no-conquest`): a match of passed turns that the round limit decides mines nothing.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
+- **Blockspace counts the transactions set** (league's decision, 2026-11-18; [consensus rule 2](#consensus-rules-season-chain-v1)):
+  its sides move in the order first, second, second, first, so it has no full moves, and a game sets 42 transactions
+  at most. For rule 2 the length of a Blockspace game is the number of transactions both sides set; a pass is not
+  counted, as passes alone could lengthen any game. Every other board game keeps its full moves. The league publishes
+  no game record of a board game, so this count is the league's own, as a board game's full moves are.
 - **Defaults of the league's chain draft** (not a protocol rule): Rocket League and both EA Sports FC editions do not
   mine at Block 0; chess has a share of 50 %, the board games 30 % and Hyperbitcoinization 20 %, each only while the
-  league has switched the game on. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
+  league has switched the game on. The board games' group is `blockli`, `nine-mens-morris`, `checkers`, `blockspace`,
+  `go-9`, `go-13` and `go-19`; each mode a board game offers has weight `1` (blitz), `1.5` (rapid) or `2`
+  (correspondence), and a board game that is switched off has no weight. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
   season that began without the game is offered the same values as a proposal; nothing of a proposal is in force
   until the board saves it.
 
@@ -3053,7 +3062,7 @@ the first rule it fails, in this order.
 2. **A real game.** `resolution` `confirmed` or `admin`; a forfeit never mines. Chess: the counted
    game record has at least `moves` full moves (default 20: the last move number is 20 or more), which
    also excludes a resignation before move 10. Board games (rev. 9.13): the game the league played has at
-   least `moves` full moves too, counted the same way (a player's move and the answer to it are one). Rocket League: a complete series, which the report rules guarantee.
+   least `moves` full moves too, counted the same way (a player's move and the answer to it are one); Blockspace (rev. 9.26, draft), whose sides do not move in turn, has at least `moves` transactions set by both sides together, passes not counted. Rocket League: a complete series, which the report rules guarantee.
 3. **Not the same clan**: no winning and losing player share a `clan` row value.
 4. **Blocks per pairing and day.** Fewer earlier blocks of the same pairing on the same UTC day of
    `created_at` than the first value of `pairlimit` (default 1). The pairing is the two rated entities: two players, or two lineups in a series.

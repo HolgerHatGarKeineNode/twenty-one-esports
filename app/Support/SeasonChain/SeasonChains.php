@@ -10,6 +10,7 @@ use App\Enums\HyperMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -729,7 +730,10 @@ final class SeasonChains
     /**
      * The block candidate of a decisive rated board game, or null (a draw).
      * White is the challenger, as in the rating (RatingService). `moves` are
-     * the full moves played, which rule 2 counts as for chess.
+     * the moves the board game counts for rule 2 (BoardGame::minedMoves()):
+     * the full moves played, as for chess, and for Blockspace every
+     * transaction a side set. A board game that is switched off by now
+     * counts full moves.
      */
     private function boardCandidate(BoardGame $game, CarbonImmutable $attestedAt): ?Candidate
     {
@@ -740,6 +744,7 @@ final class SeasonChains
         [$winner, $loser] = $game->result === '1-0' ? [$game->white->pubkey, $game->black->pubkey] : [$game->black->pubkey, $game->white->pubkey];
         $pin = GatePin::fromArray($game->gate_at_accept);
         $clans = $this->clans([$winner, $loser], $game->clans_at_accept);
+        $definition = app(GameRegistry::class)->find($game->game);
 
         // A board of a team match: labelled `#<challenge>/<board>`, one challenge for all its boards (as chess).
         return new Candidate(
@@ -749,7 +754,7 @@ final class SeasonChains
             $game->game.'/'.$game->mode,
             $attestedAt,
             $game->end_reason === BoardEndReason::Forfeit->value ? Resolution::Forfeit : Resolution::Admin,
-            intdiv($game->ply + 1, 2),
+            $definition instanceof BoardGameDefinition ? $definition->minedMoves(array_values($game->moves()->pluck('move')->all())) : intdiv($game->ply + 1, 2),
             [$winner],
             [$loser],
             $clans[$winner],
