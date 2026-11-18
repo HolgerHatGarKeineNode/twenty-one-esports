@@ -3,6 +3,9 @@
     Block 0 ("--" while no date is set) and "Bei Block 0 benachrichtigen"; while a season runs its height. Under it
     every game with a share: the era that game stands in, what a win mines now and how far its next halving is
     (HomeBoard::season(), the same figures as /mining; a season has no era of its own and a halving no date).
+    Below 1320 px the column is a third of a narrow page (269 px inside the card at 1024, and three columns with
+    a name like "Hyperbitcoinization" need 361): the era stands under the game's name instead of in a column of
+    its own and the last heading may wrap, so the table stays in its card.
 
     Below lg the same season as one compact section for guests and players (HomePhone.dc.html drew two lines for
     players only; guests saw no season on a phone): before Block 0 its date, the countdown, the supply and the
@@ -47,18 +50,21 @@
     @if ($season['keys'] !== [])
         <table class="rv-tb" data-test="season-eras">
             <thead>
-                <tr><th>{{ __('Game and mode') }}</th><th>{{ __('Era') }}</th><th class="is-r">{{ __('Sats per win') }}</th></tr>
+                <tr><th>{{ __('Game and mode') }}</th><th class="max-[1320px]:hidden">{{ __('Era') }}</th><th class="is-r max-xl:min-w-20 max-xl:whitespace-normal">{{ __('Sats per win') }}</th></tr>
             </thead>
             <tbody>
                 @foreach ($season['keys'] as $key)
                     <tr data-test="season-key" data-key="{{ $key['key'] }}">
                         <td class="whitespace-normal">
                             {{ ChainOverview::keyLabel($key['mode']) }}
+                            @unless ($key['closed'])
+                                <span class="block text-xs text-ink-3 min-[1320px]:hidden" data-test="season-key-era">{{ __('Era :era', ['era' => $key['era']]) }}</span>
+                            @endunless
                             @if ($season['live'])
                                 <span class="block text-xs text-ink-3" data-test="season-key-halving">{{ $key['halving'] }}</span>
                             @endif
                         </td>
-                        <td class="tabular-nums">{{ $key['closed'] ? '–' : $key['era'] }}</td>
+                        <td class="tabular-nums max-[1320px]:hidden">{{ $key['closed'] ? '–' : $key['era'] }}</td>
                         <td class="is-r tabular-nums">{{ $key['closed'] ? '–' : HomeBoard::sats($key['sats']) }}</td>
                     </tr>
                 @endforeach
