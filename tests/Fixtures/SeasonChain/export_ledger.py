@@ -1,8 +1,8 @@
 """Export the Pre-Season sample ledger as the golden fixture of the PHP season chain engine.
 
 The ledger generator (docs/plans/2026-09-25T1212-esports-v1-ladder/ledger-src, not in git) is the
-oracle: it implements the NIP rev. 5 rules in Python and writes SAMPLE-LEDGER.md. This script imports
-it and dumps the inputs of every block candidate plus the oracle's verdicts, blocks, per-player sums,
+oracle: it implements the season chain rules in Python, since 2026-11-18 the amount rule of
+`season-chain-v2` (a game halves by what it mined, never by a date). This script imports it and dumps the inputs of every block candidate plus the oracle's verdicts, blocks, per-player sums,
 settlement and estimator figures, and the rating examples.
 
 Usage, from the repository root:
@@ -59,7 +59,6 @@ candidates = []
 for x in ordered:
     people = sorted(set(x.winners + x.losers + list(x.gate)))
     resolution = 'forfeit' if x.ending == 'forfeit' else ('admin' if x.state == 'admin' else 'confirmed')
-    era = c.era_of(x.attested) + 1
     candidates.append({
         'label': x.label,
         'match': x.match_key,
@@ -81,7 +80,8 @@ for x in ordered:
         'expected': {
             'rule': x.rule,
             'height': x.height,
-            'era': era,
+            # the era the candidate's game stands in by what it mined before (null: outside the season, or the game is closed)
+            'era': x.key_era if c.BLOCK0_UTC <= c.utc(x.attested) < c.SEASON_END_UTC else None,
             'reward_per_player': x.per if x.valid else None,
             'reward': x.reward if x.valid else None,
             'daily_limit_in_force': c.daily_limit(x.game, x.attested),
@@ -109,7 +109,7 @@ for p, m in c.MINER.items():
 
 # estimator: blitz and team boards share the weight chess/blitz and the reward, so they form one stream
 fw = c.FORECAST_WEEK
-assert c.EST_S1['wins'][0]['blitz'] == c.EST_S1['wins'][0]['board']
+assert c.EST_S1['wins'][1]['blitz'] == c.EST_S1['wins'][1]['board']
 STREAMS = {'chess/blitz': ['blitz', 'board'], 'chess/correspondence': ['daily'], 'rocket-league/3v3': ['rl 3v3'], 'rocket-league/2v2': ['rl 2v2']}
 
 
@@ -117,7 +117,7 @@ def est(e):
     return {
         'milestone_weeks': {str(m): w for m, w in sorted(e['hits'].items())},
         'end_mined': e['end_mined'],
-        'per_era': [{'era': k + 1, 'budget': b, 'chess': ch, 'rocket-league': rl} for k, b, ch, rl in e['per_era']],
+        'per_era': [{'era': n, 'budget': b, 'chess': ch, 'rocket-league': rl} for n, b, ch, rl in e['per_era']],
         'payout_per_week': [e['pay_week'][k] for k in sorted(e['pay_week'])],
         'wins_per_era': [{key: e['wins'][k][kinds[0]] for key, kinds in STREAMS.items()} for k in sorted(e['wins'])],
         'warnings': e['warn'],
@@ -131,7 +131,7 @@ def genesis(params, supply_key='supply'):
         'weights': {'chess/blitz': params['weight']['blitz'] * 1000, 'chess/correspondence': params['weight']['daily'] * 1000,
                     'rocket-league/3v3': params['weight']['rl'] * 1000, 'rocket-league/2v2': params['weight']['rl'] * 1000,
                     'rocket-league/1v1': params['weight']['rl'] * 1000},
-        'shares': {'chess': round(params['cap']['chess'] * 100), 'rocket-league': round(params['cap']['Rocket League'] * 100)},
+        'shares': {'chess': params['share']['chess'], 'rocket-league': params['share']['Rocket League']},
         'eras': params['eras'],
     }
 
@@ -142,7 +142,6 @@ g1.update({
     'season': c.SEASON_SLUG,
     'genesis_at': iso(c.BLOCK0),
     'ends_at': c.SEASON_END_UTC.strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'halving_seconds': int(c.ERA_LEN.total_seconds()),
     'claim_seconds': int(c.CLAIM_WINDOW.total_seconds()),
     'daily': {'chess': c.DAILY_LIMIT, 'rocket-league': c.DAILY_LIMIT},
     'pairlimit': [1, c.PAIR_SEASON_LIMIT],
@@ -150,7 +149,7 @@ g1.update({
     'moves': c.MOVES,
     'minimum_trust': 50,
 })
-assert c.SEASON_END_UTC == c.BLOCK0_UTC + g1['eras'] * c.ERA_LEN
+assert g1['eras'] == c.N_ERAS and c.SEASON_END_UTC == c.BLOCK0_UTC + c.SEASON_LEN
 
 # ------------------------------------------------------------------ rating examples
 import build as b  # noqa: E402
@@ -202,6 +201,8 @@ out = {
     'changes': changes,
     'candidates': candidates,
     'totals': {'mined': c.MINED, 'blocks': len(c.CHAIN), 'remaining': c.SUPPLY - c.MINED,
+               'mined_by_game': {GAME[g]: c.ST.key_mined[g] for g in c.SHARE},
+               'era_by_game': {GAME[g]: c.KEY_ERA_NOW[g] for g in c.SHARE},
                'verdicts': dict(sorted(Counter('valid' if x.rule is None else str(x.rule) for x in c.CANDS).items()))},
     'miners': {p: {'blocks': m['blocks'], 'sats': m['sats'], 'fees': m['fees']} for p, m in sorted(c.MINER.items())},
     'fees': fees,

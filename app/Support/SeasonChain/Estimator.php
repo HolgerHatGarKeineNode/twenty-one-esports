@@ -15,9 +15,9 @@ use Carbon\CarbonImmutable;
  * of a key holds, and warnings.
  *
  * A step mines at most up to the bound of the key's era; the one block that
- * crosses a bound is not forecast. Figures are rounded half to even. The
- * ledger generator's estimator (ledger-src/chain.py, `estimate`) still
- * follows the calendar rule and no longer matches.
+ * crosses a bound is not forecast. Figures are rounded half to even, and the
+ * ledger generator's estimator (ledger-src/chain.py, `estimate`) gives the
+ * same ones (LedgerGoldenTest).
  */
 final class Estimator
 {

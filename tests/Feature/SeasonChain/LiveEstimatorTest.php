@@ -56,15 +56,18 @@ test('the live estimator over the stored ledger chain gives the figures of the l
     $overview = app(ChainOverview::class)->live($season->refresh(), CarbonImmutable::parse($ledger['estimator']['now']));
     $want = $ledger['estimator']['pre_season'];
 
-    expect($overview['mined'])->toBe(1_767_500)
-        ->and($overview['blocks'])->toBe(85)
+    expect($overview['mined'])->toBe(1_976_875)
+        ->and($overview['blocks'])->toBe(125)
         ->and($overview['remaining'])->toBe($ledger['totals']['remaining'])
-        ->and($overview['estimate']['end_mined'])->toBe(1_965_937)
-        ->and($overview['estimate']['end_mined_percent'])->toBe(93.6)
+        ->and($overview['estimate']['end_mined'])->toBe(2_054_688)
+        ->and($overview['estimate']['end_mined_percent'])->toBe(97.8)
         ->and($overview['estimate']['forecast_per_week'])->toEqual($ledger['estimator']['forecast_per_week'])
         ->and(array_filter($overview['estimate']['milestone_weeks'], fn ($week): bool => $week !== null))->toBe($want['milestone_weeks'])
         ->and($overview['estimate']['payout_per_week'])->toBe($want['payout_per_week'])
         ->and($overview['estimate']['wins_per_era'])->toEqual($want['wins_per_era'])
         ->and($overview['estimate']['warnings'])->toBe($want['warnings'])
-        ->and($overview['era'])->toBe(4);
+        // No era of the season: each game stands in the era its own mined amount puts it in.
+        ->and(array_map(fn (array $key): ?int => $key['era'], $overview['keys']))->toBe(['chess' => 4, 'rocket-league' => 6])
+        ->toBe($ledger['totals']['era_by_game'])
+        ->and(array_map(fn (array $key): int => $key['mined'], $overview['keys']))->toBe($ledger['totals']['mined_by_game']);
 });

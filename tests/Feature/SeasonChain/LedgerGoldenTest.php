@@ -8,6 +8,11 @@
  * inputs of all 336 block candidates in attestation order (listed results and
  * the unlisted blitz games that shape the counters) and the oracle's
  * verdicts, heights, eras, rewards, per-player sums, settlement and estimator.
+ *
+ * Since 2026-11-18 the oracle implements the amount rule of `season-chain-v2`
+ * (written from the rule's ten points, not from this engine): a game halves
+ * by what it mined. The figures below are the oracle's: 125 blocks and
+ * 1 976 875 sats, chess in its era 4 and Rocket League in its era 6.
  */
 
 use App\Support\Rating\ClanRating;
@@ -167,12 +172,21 @@ test('the engine reproduces every verdict, block, era and reward of the ledger',
             $want['reward_per_player'], $want['reward'], $want['daily_limit_in_force']];
     }
 
+    $minedByGame = array_map(fn (array $eras): int => array_sum($eras), $chain->minedByGameAndEra());
+    ksort($minedByGame);
+
     expect($actual)->toHaveCount(336)
         ->and($actual)->toBe($expected)
-        ->and($chain->mined())->toBe(1_767_500)
+        ->and($chain->mined())->toBe(1_976_875)
         ->and($chain->mined())->toBe($ledger['totals']['mined'])
-        ->and($chain->blocks())->toHaveCount(85)
-        ->and($chain->remaining())->toBe($ledger['totals']['remaining']);
+        ->and($chain->blocks())->toHaveCount(125)
+        ->and($chain->remaining())->toBe($ledger['totals']['remaining'])
+        // Each game by itself: what it mined and the era that puts it in.
+        ->and($minedByGame)->toBe(['chess' => 737_500, 'rocket-league' => 1_239_375])
+        ->and($minedByGame)->toBe($ledger['totals']['mined_by_game'])
+        ->and(['chess' => $chain->season->eraOf('chess', $minedByGame['chess']), 'rocket-league' => $chain->season->eraOf('rocket-league', $minedByGame['rocket-league'])])
+        ->toBe(['chess' => 4, 'rocket-league' => 6])
+        ->toBe($ledger['totals']['era_by_game']);
 
     $verdicts = array_count_values(array_map(fn (array $a): string => (string) ($a['verdict']->rule->value ?? 'valid'), $chain->attestations()));
     ksort($verdicts);
@@ -193,7 +207,7 @@ test('per-player sums, fees and the season settlement match the ledger', functio
 
     expect($miners)->toEqual($ledger['miners'])
         ->and($payouts)->toEqual($ledger['settlement']['per_player'])
-        ->and(array_sum($payouts))->toBe(1_728_920)
+        ->and(array_sum($payouts))->toBe(1_938_085)
         ->and($settlement['reserve']['voided'])->toBe($ledger['settlement']['voided'])
         ->and($settlement['reserve']['fees_without_block'] + $settlement['reserve']['fee_remainders'])->toBe($ledger['fees_to_reserve']);
 
@@ -206,14 +220,15 @@ test('per-player sums, fees and the season settlement match the ledger', functio
     expect(array_filter($feesPerBlock))->toEqual($settlement['fees_per_block']);
 });
 
-test('the estimator reproduces the ledger forecast: 1 965 937 sats, 93.6 % at the season end', function () {
+test('the estimator reproduces the ledger forecast: 2 054 688 sats, 97.8 % at the season end', function () {
     $ledger = seasonLedger();
     $want = $ledger['estimator']['pre_season'];
 
     $forecast = (new Estimator($ledger['estimator']['window_days']))->fromChain(seasonLedgerChain(), CarbonImmutable::parse($ledger['estimator']['now']));
 
-    expect($forecast['end_mined'])->toBe(1_965_937)
-        ->and($forecast['end_mined_percent'])->toBe(93.6)
+    expect($forecast['end_mined'])->toBe(2_054_688)
+        ->and($forecast['end_mined'])->toBe($want['end_mined'])
+        ->and($forecast['end_mined_percent'])->toBe(97.8)
         ->and($forecast['forecast_per_week'])->toEqual($ledger['estimator']['forecast_per_week'])
         ->and(array_filter($forecast['milestone_weeks'], fn ($week): bool => $week !== null))->toBe($want['milestone_weeks'])
         ->and($forecast['per_era'])->toBe(array_map(fn (array $era): array => ['era' => $era['era'], 'budget' => $era['budget'],
