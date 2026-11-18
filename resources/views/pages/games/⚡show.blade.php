@@ -958,7 +958,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     @endforeach
                 </div>
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Season block'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
+                    @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Season block'), $game->rated ? __('Rated wins mine a block of the season chain') : __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

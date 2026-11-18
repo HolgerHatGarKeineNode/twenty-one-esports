@@ -110,7 +110,7 @@ test('a mined rated match shows its block and links to it; a voided or unmined o
 
     expect($blocks['series-'.$mined->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 812, 'href' => route('mining').'#block-812', 'text' => 'Block 812'])
         ->and($blocks['chess-'.$voided->id]['chain'])->toMatchArray(['state' => 'void', 'height' => 813, 'text' => 'Block 813', 'note' => 'void', 'title' => 'Farmed between two accounts.', 'spoken' => 'Block 813 void'])
-        ->and($blocks['chess-'.$rejected->id]['chain'])->toMatchArray(['state' => 'none', 'height' => null, 'href' => null, 'text' => 'no block', 'reason' => 'a player is not Trusted yet', 'title' => 'No block: a player is not Trusted yet'])
+        ->and($blocks['chess-'.$rejected->id]['chain'])->toMatchArray(['state' => 'none', 'height' => null, 'href' => null, 'text' => 'no block', 'reason' => 'a player is not Trusted yet', 'brief' => 'not Trusted yet', 'title' => 'No block: a player is not Trusted yet'])
         ->and($blocks['chess-'.$drawn->id]['chain'])->toBeNull()
         ->and($blocks['chess-'.$casual->id]['chain'])->toBeNull()
         ->and($blocks['series-'.$mined->id]['aria'])->toEndWith(', Block 812');
@@ -125,8 +125,11 @@ test('a mined rated match shows its block and links to it; a voided or unmined o
         ->toContain('data-test="strip-no-block"')
         // A screen reader hears "no block: <reason>", the prefix once (review note).
         ->toContain('no block<span class="sr-only">: a player is not Trusted yet</span>')
+        // Under the cube the reason in a few words, for sighted readers only.
+        ->toContain('data-test="strip-no-block-why">not Trusted yet</span>')
         ->not->toContain('No block: No block')
-        ->not->toContain('#block-900');
+        ->not->toContain('#block-900')
+        ->and(substr_count($html, 'data-test="strip-no-block-why"'))->toBe(1);
 });
 
 test('a block of another season names its season and links nowhere; only a block of the season /mining shows links to it', function () {

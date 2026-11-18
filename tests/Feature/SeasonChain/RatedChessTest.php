@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Chess\RatedChess;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
@@ -305,6 +306,8 @@ test('P7e DoD gate: the finished game page, opened later, says what a rated game
     expect(SeasonAttestation::query()->sole()->height)->toBe(1);
     $this->actingAs($long->white)->get(route('games.show', $long))->assertOk()
         ->assertSee('mined block 1,')
+        // The banner of the result card: the block and its sats, paid out after the season review.
+        ->assertSeeInOrder(['data-test="done-block" data-status="block"', 'Block 1 is mined', '2,100 sats for the winner, paid out after the season review'], false)
         ->assertDontSee('casual games do not count');
     $this->get(route('games.show', $long))->assertOk()->assertSee('mined block 1,')->assertDontSee('casual games do not count')
         ->assertSee('Rated · Blitz 5+3')->assertDontSee('Casual · Blitz 5+3');
@@ -318,6 +321,7 @@ test('P7e DoD gate: the finished game page, opened later, says what a rated game
 
     $this->get(route('games.show', $short))->assertOk()
         ->assertSee('no block: rule 2, too short to count as a real game')
+        ->assertSeeInOrder(['data-test="done-block" data-status="none"', 'No block', 'too few moves'], false)
         ->assertDontSee('casual games do not count');
 
     // Pending: rated and finished, not attested yet. A casual game keeps its line.
@@ -325,5 +329,25 @@ test('P7e DoD gate: the finished game page, opened later, says what a rated game
         ->assertSee('pending: the league attests the result')
         ->assertDontSee('casual games do not count');
     $this->get(route('games.show', ChessGame::factory()->finished()->create()))->assertOk()
-        ->assertSee('casual games do not count')->assertSee('Casual · Blitz 5+3');
+        ->assertSee('casual games do not count')->assertSee('Casual · Blitz 5+3')->assertDontSee('data-test="done-block"', false);
+});
+
+test('a running game says under Season block what it is: a rated one that rated wins mine a block, a casual one that it does not count', function () {
+    $row = fn (string $value): string => '<span class="text-ink-2">Season block</span><span>'.$value.'</span>';
+
+    $this->get(route('games.show', ChessGame::factory()->rated()->create()))->assertOk()
+        ->assertSee($row('Rated wins mine a block of the season chain'), false)
+        ->assertDontSee($row('casual games do not count'), false);
+
+    $this->get(route('games.show', ChessGame::factory()->create()))->assertOk()
+        ->assertSee($row('casual games do not count'), false)
+        ->assertDontSee('Rated wins mine a block of the season chain');
+});
+
+test('the lobby rewards follow the rated switch: with rated chess off no mode shows a reward, although the season is live', function () {
+    expect(RatedChess::rewardsNow())->toBe(['rapid' => 3150, 'blitz' => 2100]);
+
+    config(['esports.chess.rated_queue' => false]);
+
+    expect(RatedChess::rewardsNow())->toBe([]);
 });

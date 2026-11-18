@@ -11,6 +11,7 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Tournaments\NoTournamentPrizePool;
 use App\Support\Tournaments\TournamentPrizePool;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\TestSigner;
 
@@ -226,4 +227,43 @@ test('home and the login render twice from a cache that unserializes no objects,
         $this->get(route('home'))->assertOk()->assertSee('data-test="home-season"', false);
         $this->get(route('login'))->assertOk();
     }
+});
+
+/** The season section of the phone layout, as the page renders it. */
+function homeSeasonPhone(string $html): string
+{
+    $start = strpos($html, 'data-test="home-season-phone"');
+
+    return $start === false ? '' : substr($html, $start, strpos($html, '</section>', $start) - $start);
+}
+
+test('before Block 0 a guest on a phone sees the season with its date, the supply, what a win pays after the review, and the notify action', function () {
+    $this->travelTo('2026-11-18 12:00:00');
+    config(['esports.chess.rated_queue' => true]);
+    saveChainDraft(['block0_at' => CarbonImmutable::parse('2026-11-20T19:00:00Z')->getTimestamp(), 'supply' => 1_234_567]);
+
+    $phone = homeSeasonPhone($this->get(route('home'))->assertOk()->getContent());
+
+    expect($phone)->toContain('data-state="countdown"')
+        ->toContain('data-test="season-phone-date"')
+        ->toContain('Block 0 on Fri, Nov 20, 8:00 PM')
+        ->toContain('data-test="season-phone-supply"')
+        ->toContain('Supply 1,234,567 Sats')
+        ->toContain('Era 1 pays 2,100 sats per win (Chess blitz), paid out after the season review')
+        ->toContain('data-test="notify-block0-phone"')
+        ->toContain('href="'.route('login').'"');
+});
+
+test('in a live season a guest on a phone sees the block and what a win mines now, paid out after the season review', function () {
+    openSeason(ladders: false);
+
+    $phone = homeSeasonPhone($this->get(route('home'))->assertOk()->getContent());
+
+    expect($phone)->toContain('data-state="live"')
+        ->toContain('data-test="season-phone-block"')
+        ->toContain('Block 0')
+        ->toContain('data-test="season-phone-pays"')
+        ->toContain('A win mines 2,100 sats')
+        ->toContain('Rocket League 1v1, paid out after the season review')
+        ->not->toContain('data-test="notify-block0-phone"');
 });

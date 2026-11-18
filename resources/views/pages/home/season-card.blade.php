@@ -107,7 +107,7 @@
                     <span class="rv-tag" data-test="season-phone-supply">{{ __('Supply') }} {{ HomeBoard::sats($supply) }} Sats</span>
                 @endif
                 @if ($first !== null && $season['payKey'] !== null)
-                    <span class="rv-m">{{ __('Era :era pays :sats sats per win (:key)', ['era' => $first['era'], 'sats' => HomeBoard::sats($first['sats']), 'key' => ChainOverview::keyLabel($season['payKey'])]) }}</span>
+                    <span class="rv-m">{{ __('Era :era pays :sats sats per win (:key)', ['era' => $first['era'], 'sats' => HomeBoard::sats($first['sats']), 'key' => ChainOverview::keyLabel($season['payKey'])]) }}, {{ __('paid out after the season review') }}</span>
                 @endif
             </span>
         @endif
