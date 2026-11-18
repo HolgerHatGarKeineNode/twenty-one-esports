@@ -18,7 +18,6 @@ use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonParameters;
 use App\Support\SeasonChain\SeasonRelease;
-use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -54,7 +53,7 @@ test('with the board games and Hyperbitcoinization switched on the defaults are 
             'weeks' => 24,
             'supply' => 2_100_000,
             'subsidy' => 2_100,
-            'halving_days' => 28,
+            'eras' => 6,
             'claim_days' => 90,
             'trust_minimum' => 50,
             'message' => null,
@@ -98,7 +97,8 @@ test('with the board games and Hyperbitcoinization switched on the defaults are 
         ['share', 'chess', '50'], ['share', 'board-games', '30'], ['share', 'hyperbitcoinization', '20'],
         ['daily', 'chess', '5'], ['daily', 'board-games', '5'], ['daily', 'hyperbitcoinization', '5'],
     ])
-        ->and($tags)->toContain(['weight', 'hyperbitcoinization/live', '1'], ['weight', 'hyperbitcoinization/correspondence', '1'], ['weight', 'chess/blitz', '1'], ['halving', '2419200'])
+        ->and($tags)->toContain(['weight', 'hyperbitcoinization/live', '1'], ['weight', 'hyperbitcoinization/correspondence', '1'], ['weight', 'chess/blitz', '1'], ['eras', '6'], ['consensus', 'season-chain-v2'])
+        ->and(array_column($tags, 0))->not->toContain('halving')
         ->and(array_filter($tags, fn (array $tag): bool => $tag[0] === 'weight' && (str_starts_with($tag[1], 'rocket-league/') || str_starts_with($tag[1], 'ea-sports-fc'))))->toBe([]);
 });
 
@@ -126,9 +126,9 @@ test('a game that is switched off is left out of the defaults, and the draft war
         ->and(in_array('board-games', $signed, true))->toBe($boards);
 })->with([
     'board games and Hyperbitcoinization on' => [true, true, ['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20], null],
-    'Hyperbitcoinization off' => [true, false, ['chess' => 50, 'board-games' => 30], 'The shares add up to 80 %: 20 % of every era budget cannot be mined.'],
-    'board games off' => [false, true, ['chess' => 50, 'hyperbitcoinization' => 20], 'The shares add up to 70 %: 30 % of every era budget cannot be mined.'],
-    'both off' => [false, false, ['chess' => 50], 'The shares add up to 50 %: 50 % of every era budget cannot be mined.'],
+    'Hyperbitcoinization off' => [true, false, ['chess' => 50, 'board-games' => 30], 'The shares add up to 80 %: 20 % of the supply belong to no game and cannot be mined.'],
+    'board games off' => [false, true, ['chess' => 50, 'hyperbitcoinization' => 20], 'The shares add up to 70 %: 30 % of the supply belong to no game and cannot be mined.'],
+    'both off' => [false, false, ['chess' => 50], 'The shares add up to 50 %: 50 % of the supply belong to no game and cannot be mined.'],
 ]);
 
 test('the draft offers Rocket League and EA Sports FC as proposals; a filled-in proposal saves within the limits', function (string $which, array $weights, int $share, array $others) {
@@ -213,7 +213,7 @@ test('while Hyperbitcoinization is switched off, neither the draft nor a live se
         ->assertDontSee('data-test="hyperbitcoinization-change-proposal"', false);
 });
 
-test('a live season offers Hyperbitcoinization as a change: filled in it saves nothing, saved it is a parameter change and no ladder', function () {
+test('a live season released without Hyperbitcoinization cannot take it in: its proposal carries shares, and the shares are fixed at Block 0', function () {
     BlockliOn::play();
     HyperOn::play();
     // A season released while the game was switched off: chess and the board games alone.
@@ -235,18 +235,10 @@ test('a live season offers Hyperbitcoinization as a change: filled in it saves n
         ->tap(fn () => expect(SeasonParameterChange::query()->count())->toBe(0))
         ->set('reason', 'Hyperbitcoinization joins the season.')
         ->call('saveChange')
-        ->assertSet('changeError', '')
-        ->assertDontSee('data-test="hyperbitcoinization-change-proposal"', false);
+        ->assertSet('changeError', 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
 
-    expect(SeasonParameterChange::query()->sole()->parameters)->toEqual([
-        'weights' => ['hyperbitcoinization/live' => 1000, 'hyperbitcoinization/correspondence' => 1000],
-        'shares' => ['chess' => 48, 'board-games' => 32, 'hyperbitcoinization' => 20],
-        'daily' => ['hyperbitcoinization' => 5],
-    ])
-        ->and(HyperMining::weight('live'))->toBe(1000)
-        ->and(HyperMining::weight('correspondence'))->toBe(1000)
-        // The change is the league's 2158; the game has no ladder event (NIP rev. 9.24 and 9.26).
-        ->and(NostrEvent::query()->where('kind', SeasonChains::PARAMETER_CHANGE)->count())->toBe(1)
-        ->and(NostrEvent::query()->where('kind', Ladders::KIND)->where('d', 'like', 'hyperbitcoinization/%')->count())->toBe(0)
-        ->and($season->refresh()->chainParameters()->inForceAt(now()->toImmutable())->weightFor('hyperbitcoinization/live'))->toBe(1000);
+    expect(SeasonParameterChange::query()->count())->toBe(0)
+        ->and(HyperMining::weight('live'))->toBe(0)
+        ->and(NostrEvent::query()->where('kind', SeasonChains::PARAMETER_CHANGE)->count())->toBe(0)
+        ->and($season->refresh()->chainParameters()->inForceAt(now()->toImmutable())->shares)->toBe(['chess' => 60, 'board-games' => 40]);
 });

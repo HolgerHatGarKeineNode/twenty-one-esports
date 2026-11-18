@@ -23,7 +23,7 @@ test('the live estimator over the stored ledger chain gives the figures of the l
         'slug' => 'pre-season',
         'supply' => $genesis['supply'],
         'subsidy' => $genesis['subsidy'],
-        'halving_seconds' => $genesis['halving_seconds'],
+        'eras' => $genesis['eras'],
         'claim_seconds' => $genesis['claim_seconds'],
         'minimum_trust' => $genesis['minimum_trust'],
         'parameters' => ['weights' => $genesis['weights'], 'shares' => $genesis['shares'], 'daily' => $genesis['daily'],

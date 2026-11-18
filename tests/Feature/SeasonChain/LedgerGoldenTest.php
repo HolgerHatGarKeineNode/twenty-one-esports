@@ -48,7 +48,7 @@ function seasonLedgerParameters(array $genesis, ?CarbonImmutable $genesisAt = nu
         isset($genesis['ends_at']) ? CarbonImmutable::parse($genesis['ends_at']) : $genesisAt->addSeconds($genesis['eras'] * 28 * 86400),
         $genesis['supply'],
         $genesis['subsidy'],
-        $genesis['halving_seconds'] ?? 28 * 86400,
+        $genesis['eras'],
         new ConsensusParameters(
             $genesis['weights'],
             $genesis['shares'],
@@ -106,8 +106,8 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     $season = SeasonParameters::fromDraft(ChainDraft::defaults(), 'pre-season', CarbonImmutable::parse($genesis['genesis_at']));
     $rating = seasonLedger()['rating'];
 
-    expect([$season->supply, $season->halvingSeconds, $season->claimSeconds, $season->endsAt->toIso8601ZuluString(), $season->eras()])
-        ->toBe([$genesis['supply'], $genesis['halving_seconds'], $genesis['claim_seconds'], $genesis['ends_at'], $genesis['eras']])
+    expect([$season->supply, $season->claimSeconds, $season->endsAt->toIso8601ZuluString(), $season->eras()])
+        ->toBe([$genesis['supply'], $genesis['claim_seconds'], $genesis['ends_at'], $genesis['eras']])
         ->and([$season->genesis->pairLimitPerDay, $season->genesis->pairLimitPerSeason, $season->genesis->subtree, $season->genesis->moves])
         ->toBe([...$genesis['pairlimit'], $genesis['subtree'], $genesis['moves']])
         ->and(ChainDraft::defaults()['trust_minimum'])->toBe($genesis['minimum_trust'])
@@ -127,7 +127,8 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     // chess here). The ledger fixture is the oracle's frozen genesis and stays as it is: the engine tests
     // below replay its own parameters.
     expect($season->subsidy)->toBe(2_100)
-        ->and(intdiv($season->eraBudget(1), $season->rewardPerPlayer(1000, 1)))->toBe(500)
+        // `season-chain-v2`: the first era of the chess pot holds 525 000 sats, 250 blitz wins.
+        ->and(intdiv($season->eraSize('chess', 1), $season->rewardPerPlayer(1000, 1)))->toBe(250)
         ->and($season->genesis->shares)->toBe(['chess' => 50])
         ->and($season->genesis->daily)->toBe(['chess' => 5])
         ->and($season->genesis->groups)->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']])

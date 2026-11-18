@@ -27,6 +27,7 @@ use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
+use App\Support\SeasonChain\SeasonReview;
 use App\Support\SeasonChain\Seasons;
 use App\Support\SeasonChain\SeasonSettlement;
 use App\Support\SeasonChain\TrustFacts;
@@ -73,14 +74,16 @@ function releaseAs(User $admin, TestSigner $signer, string $supply = '2 100 000'
     return $release->release($admin, $supply, $endsAt, SeasonRelease::draftHash(), $signer->signTemplates([$template]));
 }
 
-test('the parameter digest is the one of the NIP example genesis', function () {
+test('the parameter digest is pinned: the example genesis with `eras 6` and `season-chain-v2`, and a `halving` tag is not part of it', function () {
     $tags = [['season', 'pre-season'], ['supply', '1000000'], ['subsidy', '2100'], ['weight', 'chess/blitz', '1'], ['weight', 'chess/correspondence', '2'],
         ['weight', 'rocket-league/2v2', '2.5'], ['share', 'chess', '50'], ['share', 'rocket-league', '50'], ['daily', 'chess', '10'], ['daily', 'rocket-league', '10'],
-        ['pairlimit', '3', '5'], ['subtree', '90'], ['moves', '20'], ['halving', '900'], ['ends', '1790353500'], ['claim', '7776000'], ['consensus', 'season-chain-v1'],
+        ['pairlimit', '3', '5'], ['subtree', '90'], ['moves', '20'], ['eras', '6'], ['ends', '1790353500'], ['claim', '7776000'], ['consensus', 'season-chain-v2'],
         ['a', '31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/pre-season', 'wss://relay.example.org'], ['alt', 'Season genesis']];
     $content = '25/Sep/2026 TWENTY ONE Esports: Chancellor on brink of second checkmate. Block 0 of the Pre-Season. Demo season of the protocol examples: eras of 15 minutes, forty minutes in total.';
 
-    expect(SeasonRelease::digest($content, $tags))->toBe('82f1fa0c62e7aa3efd843b7b5251a697a7d05abeb48a6b9460a80df9324d0ca1')
+    expect(SeasonRelease::digest($content, $tags))->toBe('9d0f5be24c8386bce292b0c905306a19007aac13adb26e8f3d8a7d10c3487f8c')
+        ->and(SeasonRelease::digest($content, [...$tags, ['halving', '900']]))->toBe('9d0f5be24c8386bce292b0c905306a19007aac13adb26e8f3d8a7d10c3487f8c')
+        ->and(SeasonRelease::digest($content, array_map(fn (array $tag): array => $tag[0] === 'eras' ? ['eras', '5'] : $tag, $tags)))->not->toBe('9d0f5be24c8386bce292b0c905306a19007aac13adb26e8f3d8a7d10c3487f8c')
         ->and(SeasonRelease::factor(2500))->toBe('2.5')
         ->and(SeasonRelease::factor(1000))->toBe('1')
         ->and(SeasonRelease::factor(1250))->toBe('1.25');
@@ -107,7 +110,7 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
         ->and($genesis->hasValidSignature())->toBeTrue()
         ->and($genesis->content)->toBe(RELEASE_MESSAGE)
         ->and($genesis->tag('supply'))->toBe('2100000')
-        ->and($genesis->tag('consensus'))->toBe('season-chain-v1')
+        ->and($genesis->tag('consensus'))->toBe('season-chain-v2')
         ->and($genesis->tagsNamed('p'))->toBe([[$this->board->pubkey, '', 'release']])
         ->and($genesis->tagsNamed('e'))->toBe([[$adminList->id, '', $this->league->pubkey], [$label->id, '', $this->board->pubkey]])
         ->and($label->pubkey)->toBe($this->board->pubkey)
@@ -142,7 +145,9 @@ test('a release from the untouched defaults signs them; a rated chess blitz win 
     $season = releaseAs($this->board, $this->boardSigner);
     $genesis = SignedEvent::fromInput(NostrEvent::query()->where('kind', SeasonChains::GENESIS)->sole()->payload());
 
-    expect([$genesis->tag('supply'), $genesis->tag('subsidy'), $genesis->tag('halving'), $genesis->tag('claim')])->toBe(['2100000', '2100', '2419200', '7776000'])
+    expect([$genesis->tag('supply'), $genesis->tag('subsidy'), $genesis->tag('eras'), $genesis->tag('claim'), $genesis->tag('consensus')])->toBe(['2100000', '2100', '6', '7776000', 'season-chain-v2'])
+        ->and($genesis->tagsNamed('halving'))->toBe([])
+        ->and($season->eras)->toBe(6)
         ->and((int) $genesis->tag('ends') - $genesis->createdAt)->toBeGreaterThan(24 * 604800 - 3600)->toBeLessThanOrEqual(24 * 604800)
         ->and($genesis->tagsNamed('share'))->toBe([['chess', '50'], ['board-games', '30'], ['hyperbitcoinization', '20']])
         ->and($genesis->tagsNamed('daily'))->toBe([['chess', '5'], ['board-games', '5'], ['hyperbitcoinization', '5']])
@@ -204,6 +209,9 @@ test('a release from the untouched defaults signs them; a rated chess blitz win 
     $review = app(SeasonSettlement::class)->review($season);
 
     expect([$review['blocks'], $review['mined'], $review['voided'], $review['payout'], $review['mismatch']])->toBe([1, 2100, 0, 2100, null])
+        // The rest is what no block mined: it is on the admin's review and on the public one.
+        ->and($review['rest'])->toBe(2_097_900)
+        ->and(app(SeasonReview::class)->of($season)['rest'])->toBe(2_097_900)
         ->and(array_map(fn (array $row): array => [$row['pubkey'], $row['blocks'], $row['mined'], $row['payout'], $row['heights']], $review['rows']))->toBe([[$winner, 1, 2100, 2100, [1]]]);
 });
 

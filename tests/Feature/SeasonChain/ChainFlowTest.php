@@ -219,10 +219,10 @@ test('attesting is idempotent: the same series never gets a second attestation',
         ->and($again?->height)->toBe(1);
 });
 
-test('the share cap of an era stops a win that would take more than the game may mine', function () {
+test('a game that mined its last era is closed: later wins are attested, but mine nothing', function () {
     app()->bind(TrustFacts::class, TrustedFacts::class);
-    // Era 1 budget 100 000, Rocket League may mine 60 % of it: 60 000, one 3v3 block.
-    $this->season->update(['supply' => 200_000]);
+    // Rocket League has 60 % of 200 000, a pot of 120 000; its one era ends at 60 000 mined: one 3v3 block.
+    $this->season->update(['supply' => 200_000, 'eras' => 1]);
 
     foreach (range(1, 3) as $ignored) {
         chainSeries(chainLineup(), chainLineup());
@@ -231,8 +231,9 @@ test('the share cap of an era stops a win that would take more than the game may
     $rows = SeasonAttestation::query()->orderBy('id')->get();
 
     expect($rows->pluck('height')->all())->toBe([1, null, null])
-        ->and($rows->pluck('reason')->all())->toBe([null, 'share-cap', 'share-cap'])
-        ->and($rows->pluck('rule')->all())->toBe([null, ConsensusRule::ShareCap->value, ConsensusRule::ShareCap->value])
+        ->and($rows->pluck('reason')->all())->toBe([null, 'key-closed', 'key-closed'])
+        ->and($rows->pluck('rule')->all())->toBe([null, ConsensusRule::KeyClosed->value, ConsensusRule::KeyClosed->value])
+        ->and($rows->pluck('reward')->all())->toBe([60_000, 0, 0])
         ->and(app(SeasonChains::class)->chain($this->season->refresh())->mined())->toBe(60_000);
 });
 
@@ -280,7 +281,52 @@ test('a parameter change is never retroactive and only a board admin can make on
         ->toThrow(SeasonReleaseRefused::class, 'board member')
         ->and(fn () => $chains->changeParameters($admin, ['share' => ['chess' => 0]], 'x', CarbonImmutable::now()->addHour()))
         ->toThrow(SeasonReleaseRefused::class)
-        ->and(fn () => $chains->changeParameters($admin, ['shares' => ['chess' => 0]], 'x', CarbonImmutable::now()->addHour()))
-        ->toThrow(SeasonReleaseRefused::class, 'out of range')
         ->and(SeasonParameterChange::query()->count())->toBe(0);
 });
+
+test('the shares are fixed at Block 0: a change that names one is refused and nothing is signed', function (array $changes) {
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    $before = NostrEvent::query()->count();
+
+    expect(fn () => app(SeasonChains::class)->changeParameters($admin, $changes, 'Chess gets more.', CarbonImmutable::now()->addHour()))
+        ->toThrow(SeasonReleaseRefused::class, 'The shares are fixed at Block 0')
+        ->and(SeasonParameterChange::query()->count())->toBe(0)
+        ->and(NostrEvent::query()->count())->toBe($before)
+        ->and($this->season->refresh()->chainParameters()->inForceAt(CarbonImmutable::now()->addDay())->shares)->toBe(['chess' => 40, 'rocket-league' => 60]);
+})->with([
+    'a share alone' => [['shares' => ['chess' => 45]]],
+    'a share next to a weight' => [['weights' => ['chess/blitz' => 2000], 'shares' => ['chess' => 45, 'rocket-league' => 55]]],
+    'an empty shares row' => [['moves' => 30, 'shares' => []]],
+]);
+
+test('weights, daily limits, pairing limits, the trust circle and the minimum moves still change, and no share tag is signed', function () {
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+
+    $change = app(SeasonChains::class)->changeParameters($admin, ['weights' => ['chess/blitz' => 1500], 'daily' => ['chess' => 3], 'pairlimit' => [2, 6], 'subtree' => 80, 'moves' => 25],
+        'Everything that may change.', CarbonImmutable::now()->addHour());
+    $event = SignedEvent::fromInput($change->nostrEvent->payload());
+    $inForce = $this->season->refresh()->chainParameters()->inForceAt(CarbonImmutable::now()->addDay());
+
+    expect([$inForce->weightFor('chess/blitz'), $inForce->dailyLimitFor('chess'), $inForce->pairLimitPerDay, $inForce->pairLimitPerSeason, $inForce->subtree, $inForce->moves])->toBe([1500, 3, 2, 6, 80, 25])
+        ->and($inForce->shares)->toBe(['chess' => 40, 'rocket-league' => 60])
+        ->and($event->tagsNamed('share'))->toBe([])
+        ->and([$event->tagsNamed('weight'), $event->tagsNamed('daily'), $event->tagsNamed('pairlimit'), $event->tag('subtree'), $event->tag('moves')])
+        ->toBe([[['chess/blitz', '1.5']], [['chess', '3']], [['2', '6']], '80', '25']);
+});
+
+test('a weight change is held to the last era: one that would pay nothing there, or more than that era holds, is refused', function (array $season, array $weights, string $message) {
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    $this->season->update($season);
+
+    expect(fn () => app(SeasonChains::class)->changeParameters($admin, ['weights' => $weights], 'x', CarbonImmutable::now()->addHour()))
+        ->toThrow(SeasonReleaseRefused::class, $message)
+        ->and(SeasonParameterChange::query()->count())->toBe(0);
+})->with([
+    // Subsidy 20 000: weight 0.001 pays floor(20 000 * 1 / 32 000) = 0 in era 6.
+    'nothing in era 6' => [[], ['chess/blitz' => 1], 'Chess blitz would pay nothing in era 6'],
+    // Supply 320 000: Rocket League's era 6 holds floor(192 000 / 64) = 3 000; a 3v3 block at weight 2 pays 3 * 1 250.
+    'a block larger than era 6' => [['supply' => 320_000], ['rocket-league/3v3' => 2000], 'pays 3750 sats in era 6, but that era holds only 3000 sats for Rocket League'],
+]);

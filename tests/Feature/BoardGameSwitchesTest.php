@@ -16,6 +16,7 @@ use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\Season;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Cards\PageCard;
@@ -247,9 +248,11 @@ test('switched off, a board game has no route and no place in the navigation', f
     expect(array_column(ShellNavigation::current()->games(), 'slug'))->not->toContain('checkers');
 });
 
-test('from P6 a board game joins the chain: its ladder is published, it has a draft row, and a running season takes it in by a parameter change', function () {
+test('from P6 a board game joins the chain: its ladder is published, it has a draft row, and a running season whose Block 0 gave it a share lets it mine by a parameter change', function () {
     FixtureBoardGame::register();
-    $season = openSeason(ladders: false);
+    $parameters = Season::factory()->make()->parameters;
+    // The shares are fixed at Block 0 (`season-chain-v2`): the game has its 5 % from the start, and no weight yet.
+    $season = openSeason(['parameters' => [...$parameters, 'shares' => [...$parameters['shares'], 'chess' => 27, FIXTURE_BOARD => 5]]], ladders: false);
     $trust = new TestSigner;
     config(['esports.trust.nsec' => $trust->secret]);
 
@@ -264,14 +267,14 @@ test('from P6 a board game joins the chain: its ladder is published, it has a dr
     config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
     $this->travel(1)->minutes();
 
-    // A weight alone is refused: a game that starts to mine brings its share and daily limit in the same change.
+    // A weight alone is refused: a game that starts to mine brings its daily limit in the same change. A share is refused in any change.
     expect(fn () => app(SeasonChains::class)->changeParameters($admin, ['weights' => [FIXTURE_BOARD.'/blitz' => 1000]], 'Board games mine.', CarbonImmutable::now()))
-        ->toThrow(SeasonReleaseRefused::class);
+        ->toThrow(SeasonReleaseRefused::class, 'needs a daily limit in the same change')
+        ->and(fn () => app(SeasonChains::class)->changeParameters($admin, ['weights' => [FIXTURE_BOARD.'/blitz' => 1000], 'shares' => [FIXTURE_BOARD => 6], 'daily' => [FIXTURE_BOARD => 4]], 'Board games mine.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class, 'The shares are fixed at Block 0');
 
-    // With all three, and the shares still at most 100 %, the running season takes it in.
     app(SeasonChains::class)->changeParameters($admin, [
         'weights' => [FIXTURE_BOARD.'/blitz' => 1000],
-        'shares' => ['chess' => 30, FIXTURE_BOARD => 5],
         'daily' => [FIXTURE_BOARD => 4],
     ], 'Board games mine.', CarbonImmutable::now());
 

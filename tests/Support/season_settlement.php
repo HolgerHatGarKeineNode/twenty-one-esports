@@ -23,10 +23,10 @@ use Tests\Support\FakeNwcWallet;
  *
  * @param  list<array{0: User, 1: int}>  $wins
  */
-function settledSeason(array $wins): Season
+function settledSeason(array $wins, array $attributes = []): Season
 {
     $genesisAt = now()->subDays(40)->startOfSecond();
-    $season = openSeason(['genesis_at' => $genesisAt, 'ends_at' => now()->subHour()->startOfSecond()]);
+    $season = openSeason(['genesis_at' => $genesisAt, 'ends_at' => now()->subHour()->startOfSecond(), ...$attributes]);
     $chain = new BlockChain($season->chainParameters(), new ConsensusRules($season->minimum_trust));
 
     foreach ($wins as $index => [$winner, $day]) {

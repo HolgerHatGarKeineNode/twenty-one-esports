@@ -31,6 +31,42 @@ use Illuminate\Support\Facades\File;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
+/** Three Rocket League blocks over a pot of 3 600: eras 1, 2 and 4 at 2 100, 1 050 and 262 sats. */
+function seasonAcrossEras(): Season
+{
+    return settledSeason([[settlementPlayer('Alice'), 1], [settlementPlayer('Bob'), 2], [settlementPlayer('Carol'), 3]], ['supply' => 10_000]);
+}
+
+test('the replay reproduces the era and the rewards of every stored block', function () {
+    $season = seasonAcrossEras();
+    $stored = $season->attestations()->orderBy('height')->get()->map->only(['height', 'era', 'reward_per_player', 'reward'])->all();
+
+    expect($stored)->toBe([
+        ['height' => 1, 'era' => 1, 'reward_per_player' => 2100, 'reward' => 2100],
+        ['height' => 2, 'era' => 2, 'reward_per_player' => 1050, 'reward' => 1050],
+        ['height' => 3, 'era' => 4, 'reward_per_player' => 262, 'reward' => 262],
+    ])
+        ->and(array_map(fn ($block): array => ['height' => $block->height, 'era' => $block->era, 'reward_per_player' => $block->rewardPerPlayer, 'reward' => $block->reward], app(SeasonChains::class)->chain($season)->blocks()))->toBe($stored)
+        ->and(app(SeasonSettlement::class)->review($season)['mismatch'])->toBeNull();
+});
+
+test('a stored chain the replay does not reproduce is named with its block and cannot be settled', function (Closure $tamper, int $height) {
+    $season = seasonAcrossEras();
+    $tamper($season);
+
+    expect(app(SeasonSettlement::class)->review($season->refresh())['mismatch'])->toBe("The replay of the chain differs from the stored blocks at block {$height}. Nothing can be settled until that is checked.")
+        ->and(fn () => app(SeasonSettlement::class)->approve($season, aBoardMember()))->toThrow(SeasonSettlementRefused::class);
+})->with([
+    'a reward per player raised' => [fn (Season $season) => $season->attestations()->where('height', 2)->update(['reward_per_player' => 2100]), 2],
+    'a block reward raised' => [fn (Season $season) => $season->attestations()->where('height', 2)->update(['reward' => 2100]), 2],
+    'an era set back' => [fn (Season $season) => $season->attestations()->where('height', 3)->update(['era' => 3]), 3],
+    'two heights swapped' => [function (Season $season) {
+        $season->attestations()->where('height', 1)->update(['height' => 99]);
+        $season->attestations()->where('height', 2)->update(['height' => 1]);
+        $season->attestations()->where('height', 99)->update(['height' => 2]);
+    }, 1],
+]);
+
 test('the review replays the chain: per player the mined sats of their blocks, and never the address itself', function () {
     $alice = settlementPlayer('Alice');
     $bob = settlementPlayer('Bob', null);

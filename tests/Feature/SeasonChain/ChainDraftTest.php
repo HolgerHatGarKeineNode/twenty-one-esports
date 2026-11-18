@@ -12,6 +12,7 @@
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\Season;
+use App\Models\SeasonParameterChange;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
@@ -126,7 +127,11 @@ test('the draft refuses what Block 0 must never sign', function (array $set, str
     'a mining game without a share' => [['draftShares.ea-sports-fc' => ''], 'EA Sports FC mines, so it needs a share and a daily limit'],
     'a mining game without a daily limit' => [['draftDaily.chess' => ''], 'Chess mines, so it needs a share and a daily limit'],
     'shares above 100 %' => [['draftShares.chess' => '43'], 'The shares add up to 101 %'],
-    'an era longer than the season' => [['draft.weeks' => '8', 'draft.halving_days' => '60'], 'An era of 60 days is longer than the season of 8 weeks'],
+    // 2 100 * 0.01 / 32 is below 1 sat.
+    'a weight that pays nothing in the last era' => [['draftWeights.chess/blitz' => '0.01'], 'Chess blitz would pay nothing in era 6'],
+    // Chess has 32 % of 1 000: its era 6 holds floor(320 / 64) = 5 sats, a blitz win pays 65 there.
+    'a block larger than what the last era holds' => [['draft.supply' => '1000'], 'A block of Chess blitz pays 65 sats in era 6, but that era holds only 5 sats for Chess'],
+    'more eras than a chain can halve' => [['draft.eras' => '17'], 'Eras'],
     'a message above 280 characters' => [['draft.message' => str_repeat('x', 281)], 'up to 280 characters'],
 ]);
 
@@ -198,7 +203,7 @@ test('the page warns about what may be released: shares below 100 %, a game with
     $warnings = ChainDraft::warnings(ChainDraft::current(), ['most-of-the-supply-stays-unmined']);
 
     expect($warnings)->toBe([
-        'The shares add up to 90 %: 10 % of every era budget cannot be mined.',
+        'The shares add up to 90 %: 10 % of the supply belong to no game and cannot be mined.',
         'Chess blitz has a weight, but its rated play is off, so its wins do not mine until it opens.',
         'Chess daily has a weight, but its rated play is off, so its wins do not mine until it opens.',
         'Chess rapid has a weight, but its rated play is off, so its wins do not mine until it opens.',
@@ -224,7 +229,7 @@ test('the preview is what Block 0 signs: the same genesis tags, the ladder value
     $page->call('release', json_encode($this->boardSigner->signTemplates($page->instance()->prepareRelease())))->assertSet('releaseError', '');
 
     $genesis = SignedEvent::fromInput(NostrEvent::query()->where('kind', SeasonChains::GENESIS)->sole()->payload());
-    $covered = array_values(array_filter($genesis->tags, fn (array $tag): bool => in_array($tag[0], ['season', 'supply', 'subsidy', 'weight', 'group', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'halving', 'ends', 'claim', 'consensus'], true)));
+    $covered = array_values(array_filter($genesis->tags, fn (array $tag): bool => in_array($tag[0], ['season', 'supply', 'subsidy', 'weight', 'group', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'eras', 'ends', 'claim', 'consensus'], true)));
     $ladder = NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'ea-sports-fc-27/1v1/pre-season'])->sole()->payload()['tags'];
 
     expect($covered)->toBe($preview['genesis'])
@@ -235,23 +240,23 @@ test('the preview is what Block 0 signs: the same genesis tags, the ladder value
         ->and(Season::query()->sole()->parameters['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']]);
 });
 
-test('a genesis without share groups signs exactly the tags and digest of NIP rev. 5', function () {
+test('a genesis without share groups signs exactly these tags and this digest, and a group changes the digest', function () {
     $draft = [
-        'slug' => 'pre-season', 'supply' => 1_000_000, 'subsidy' => 2_100, 'halving_seconds' => 900, 'claim_seconds' => 7_776_000,
+        'slug' => 'pre-season', 'supply' => 1_000_000, 'subsidy' => 2_100, 'eras' => 6, 'claim_seconds' => 7_776_000,
         'parameters' => ['weights' => ['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'rocket-league/2v2' => 2500], 'groups' => [], 'shares' => ['chess' => 50, 'rocket-league' => 50],
             'daily' => ['chess' => 10, 'rocket-league' => 10], 'pairlimit' => [3, 5], 'subtree' => 90, 'moves' => 20],
     ];
     $tags = SeasonRelease::parameterTags($draft, 1_790_353_500);
     $content = '25/Sep/2026 TWENTY ONE Esports: Chancellor on brink of second checkmate. Block 0 of the Pre-Season. Demo season of the protocol examples: eras of 15 minutes, forty minutes in total.';
 
-    // The tags of the NIP rev. 5 example genesis, and its digest.
+    // The example genesis of the NIP with `eras 6` in place of `halving 900` (`season-chain-v2`); the NIP's own example follows with its revision.
     expect($tags)->toBe([['season', 'pre-season'], ['supply', '1000000'], ['subsidy', '2100'], ['weight', 'chess/blitz', '1'], ['weight', 'chess/correspondence', '2'],
         ['weight', 'rocket-league/2v2', '2.5'], ['share', 'chess', '50'], ['share', 'rocket-league', '50'], ['daily', 'chess', '10'], ['daily', 'rocket-league', '10'],
-        ['pairlimit', '3', '5'], ['subtree', '90'], ['moves', '20'], ['halving', '900'], ['ends', '1790353500'], ['claim', '7776000'], ['consensus', 'season-chain-v1']])
-        ->and(SeasonRelease::digest($content, $tags))->toBe('82f1fa0c62e7aa3efd843b7b5251a697a7d05abeb48a6b9460a80df9324d0ca1')
+        ['pairlimit', '3', '5'], ['subtree', '90'], ['moves', '20'], ['eras', '6'], ['ends', '1790353500'], ['claim', '7776000'], ['consensus', 'season-chain-v2']])
+        ->and(SeasonRelease::digest($content, $tags))->toBe('9d0f5be24c8386bce292b0c905306a19007aac13adb26e8f3d8a7d10c3487f8c')
         // A group is covered by the digest: the same draft with one signs another digest.
         ->and(SeasonRelease::digest($content, SeasonRelease::parameterTags([...$draft, 'parameters' => [...$draft['parameters'], 'groups' => ['rl' => ['rocket-league', 'chess']]]], 1_790_353_500)))
-        ->not->toBe('82f1fa0c62e7aa3efd843b7b5251a697a7d05abeb48a6b9460a80df9324d0ca1');
+        ->not->toBe('9d0f5be24c8386bce292b0c905306a19007aac13adb26e8f3d8a7d10c3487f8c');
 });
 
 test('the release is bound to the draft the page showed: a draft changed after prepare is refused and nothing is signed', function () {
@@ -312,7 +317,7 @@ test('without a genesis message in the draft Block 0 is refused', function () {
         ->and($page->instance()->releaseError)->toContain('Write the genesis message in the chain draft first');
 });
 
-test('a rule change during the season may add a game with its weight, share and daily limit together', function () {
+test('a rule change during the season cannot add a game Block 0 gave no share, with or without a share in the change', function () {
     $admin = $this->board;
     $parameters = Season::factory()->make()->parameters;
     // A season released without EA Sports FC.
@@ -324,24 +329,15 @@ test('a rule change during the season may add a game with its weight, share and 
     ]]);
     $chains = app(SeasonChains::class);
 
-    expect(fn () => $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/1v1' => 1000]], 'FC joins.', CarbonImmutable::now()))
-        ->toThrow(SeasonReleaseRefused::class, 'EA Sports FC mines, so it needs a share and a daily limit in the same change')
-        ->and(fn () => $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/1v1' => 1000], 'shares' => ['ea-sports-fc' => 30], 'daily' => ['ea-sports-fc' => 5]], 'FC joins.', CarbonImmutable::now()))
-        ->toThrow(SeasonReleaseRefused::class, 'The shares add up to 105 %')
+    expect(fn () => $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/1v1' => 1000], 'daily' => ['ea-sports-fc' => 5]], 'FC joins.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class, 'EA Sports FC has no share in this season. The shares are fixed at Block 0')
+        ->and(fn () => $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/1v1' => 1000], 'shares' => ['ea-sports-fc' => 25], 'daily' => ['ea-sports-fc' => 5]], 'FC joins.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class, 'The shares are fixed at Block 0')
         ->and(fn () => $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/9v9' => 1000]], 'x', CarbonImmutable::now()))
         ->toThrow(SeasonReleaseRefused::class, 'out of range')
-        ->and(fn () => $chains->changeParameters($admin, ['shares' => ['ea-sports-fc-27' => 10]], 'x', CarbonImmutable::now()))
-        ->toThrow(SeasonReleaseRefused::class, 'out of range');
-
-    $change = $chains->changeParameters($admin, ['weights' => ['ea-sports-fc-27/1v1' => 1000, 'ea-sports-fc-26/1v1' => 1000], 'shares' => ['ea-sports-fc' => 25], 'daily' => ['ea-sports-fc' => 5]], 'Both FC editions join.', CarbonImmutable::now());
-    $event = SignedEvent::fromInput($change->nostrEvent->payload());
-    $inForce = Season::query()->sole()->chainParameters()->inForceAt(CarbonImmutable::now()->addMinute());
-
-    expect($event->tagsNamed('weight'))->toBe([['ea-sports-fc-27/1v1', '1'], ['ea-sports-fc-26/1v1', '1']])
-        ->and($event->tagsNamed('share'))->toBe([['ea-sports-fc', '25']])
-        ->and($event->tagsNamed('daily'))->toBe([['ea-sports-fc', '5']])
-        ->and($inForce->weightFor('ea-sports-fc-26/1v1'))->toBe(1000)
-        ->and($inForce->dailyLimitFor('ea-sports-fc-27'))->toBe(5);
+        ->and(SeasonParameterChange::query()->count())->toBe(0)
+        ->and(NostrEvent::query()->where('kind', SeasonChains::PARAMETER_CHANGE)->count())->toBe(0)
+        ->and(Season::query()->sole()->chainParameters()->inForceAt(CarbonImmutable::now()->addMinute())->weightFor('ea-sports-fc-27/1v1'))->toBe(0);
 });
 
 test('the Season page, the rules and the countdown read the saved draft; before one is saved they name no supply', function () {

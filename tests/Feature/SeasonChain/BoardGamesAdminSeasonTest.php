@@ -154,20 +154,18 @@ test('the board keeps the board games unmined by clearing their weights; a share
     expect($page->get('draftError'))->toBe('Board games mine, so they need a share and a daily limit.');
 });
 
-test('in a live season with the board games\' group the rule change adds them: weights, the group\'s share and daily limit, in one change', function () {
-    openSeason(boardGamesUnminedGenesis(withGroup: true));
-
-    expect(Season::query()->sole()->chainParameters()->genesis->groups)->toHaveKey('board-games');
+test('a live season whose Block 0 gave the board games a share lets them mine by a change: weights and the daily limit, no share', function () {
+    $genesis = boardGamesUnminedGenesis(withGroup: true);
+    $genesis['parameters']['shares'] = ['chess' => 30, 'rocket-league' => 40, 'ea-sports-fc' => 25, 'board-games' => 5];
+    openSeason($genesis);
 
     Livewire::actingAs($this->board)->test('pages::admin.season')
         ->assertSet('weights.nine-mens-morris/correspondence', '')
         ->assertSet('weights.checkers/correspondence', '')
-        ->assertSet('shares.board-games', '')
+        ->assertSet('shares.board-games', '5')
         ->assertSet('daily.board-games', '')
         ->set('weights.nine-mens-morris/correspondence', '1.5')
         ->set('weights.checkers/correspondence', '1')
-        ->set('shares.chess', '30')
-        ->set('shares.board-games', '5')
         ->set('daily.board-games', '3')
         ->set('reason', 'Board games mine from today.')
         ->call('saveChange')
@@ -175,12 +173,11 @@ test('in a live season with the board games\' group the rule change adds them: w
 
     expect(SeasonParameterChange::query()->sole()->parameters)->toBe([
         'weights' => ['nine-mens-morris/correspondence' => 1500, 'checkers/correspondence' => 1000],
-        'shares' => ['chess' => 30, 'board-games' => 5],
         'daily' => ['board-games' => 3],
     ]);
 });
 
-test('a running season whose genesis has no board games\' group takes each board game in as its own share key', function () {
+test('a running season cannot give a game a share: a change that names one is refused, whatever else it carries', function () {
     openSeason(boardGamesUnminedGenesis(withGroup: false));
 
     $page = Livewire::actingAs($this->board)->test('pages::admin.season')
@@ -195,23 +192,19 @@ test('a running season whose genesis has no board games\' group takes each board
         ->set('daily.checkers', '3')
         ->set('reason', 'Checkers mines from today.')
         ->call('saveChange')
-        ->assertSet('changeError', '');
+        ->assertSet('changeError', 'Only weights, daily limits, pairing limits, the trust circle and the minimum moves can change during a season. The shares are fixed at Block 0.');
 
-    expect(SeasonParameterChange::query()->sole()->parameters)->toBe([
-        'weights' => ['checkers/correspondence' => 1000],
-        'shares' => ['checkers' => 5, 'ea-sports-fc' => 20],
-        'daily' => ['checkers' => 3],
-    ]);
+    expect(SeasonParameterChange::query()->count())->toBe(0);
 });
 
-test('a rule change that lets the board games mine without their share and daily limit names them in the plural; a single game keeps its sentence', function () {
+test('a rule change that gives a weight to a game without a share at Block 0 is refused: the board games in the plural, a single game in its own sentence', function () {
     openSeason(boardGamesUnminedGenesis(withGroup: true));
 
     Livewire::actingAs($this->board)->test('pages::admin.season')
         ->set('weights.checkers/correspondence', '1')
         ->set('reason', 'Board games mine.')
         ->call('saveChange')
-        ->assertSet('changeError', 'Board games mine, so they need a share and a daily limit in the same change.');
+        ->assertSet('changeError', 'Board games have no share in this season. The shares are fixed at Block 0, so they can mine from the next season on.');
 
     Season::query()->delete();
     openSeason(boardGamesUnminedGenesis(withGroup: false));
@@ -220,7 +213,7 @@ test('a rule change that lets the board games mine without their share and daily
         ->set('weights.checkers/correspondence', '1')
         ->set('reason', 'Checkers mines.')
         ->call('saveChange')
-        ->assertSet('changeError', 'Checkers mines, so it needs a share and a daily limit in the same change.');
+        ->assertSet('changeError', 'Checkers has no share in this season. The shares are fixed at Block 0, so it can mine from the next season on.');
 
     expect(SeasonParameterChange::query()->count())->toBe(0);
 });

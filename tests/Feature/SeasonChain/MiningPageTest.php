@@ -269,7 +269,8 @@ test('the supply chart has one point per day with blocks, ends at the mined figu
         ->and($curve['days'][1]['total'])->toBe($chain->mined())
         ->and($chain->mined())->toBeGreaterThan(0)
         ->and($curve['forecast'])->toBe(100_000)
-        ->and(array_column($curve['halvings'], 'era'))->toBe([2, 3, 4, 5, 6]);
+        // No halving has a date (`season-chain-v2`): the chart draws no era hairlines.
+        ->and($curve['halvings'])->toBe([]);
 });
 
 test('the Season page survives a Livewire roundtrip between seasons too', function () {

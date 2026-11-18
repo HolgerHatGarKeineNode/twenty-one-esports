@@ -24,6 +24,7 @@ use App\Support\Chess\RatedChess;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 
@@ -350,4 +351,40 @@ test('the lobby rewards follow the rated switch: with rated chess off no mode sh
     config(['esports.chess.rated_queue' => false]);
 
     expect(RatedChess::rewardsNow())->toBe([]);
+});
+
+test('two rated games reach for the last sats of the chess pot: the first one attested mines them, the second mines nothing', function () {
+    app()->instance(TrustFacts::class, chessFacts());
+    // Chess alone, a pot of 4 200 in one era that ends at 2 100 mined: room for exactly one blitz block of 2 100.
+    $this->season->update(['supply' => 4_200, 'subsidy' => 2_100, 'eras' => 1, 'parameters' => [...$this->season->parameters, 'shares' => ['chess' => 100]]]);
+    $queue = app(ChessQueue::class);
+    $games = [];
+
+    // Both games are running before either ends: neither knew of the other's block when it started.
+    foreach (range(1, 2) as $ignored) {
+        $queue->join(clanPlayer(), 'blitz', rated: true);
+        $games[] = playTwentyMoves($queue->join(clanPlayer(), 'blitz', rated: true));
+    }
+
+    // Every read and write of the chain happens inside a transaction, and the season row is asked for first.
+    $order = [];
+    DB::listen(function ($query) use (&$order) {
+        if (preg_match('/^(select|insert|update).*?"(seasons|season_attestations)"/', $query->sql, $match) === 1) {
+            $order[] = [$match[2], DB::transactionLevel() > 0];
+        }
+    });
+
+    foreach ($games as $game) {
+        app(ChessGameService::class)->resign($game->refresh(), $game->black);
+    }
+
+    $rows = SeasonAttestation::query()->orderBy('id')->get();
+    $tables = array_column($order, 0);
+
+    expect($rows->map->only(['source_id', 'height', 'reason', 'era', 'reward_per_player', 'reward'])->all())->toBe([
+        ['source_id' => $games[0]->id, 'height' => 1, 'reason' => null, 'era' => 1, 'reward_per_player' => 2100, 'reward' => 2100],
+        ['source_id' => $games[1]->id, 'height' => null, 'reason' => 'key-closed', 'era' => 1, 'reward_per_player' => 0, 'reward' => 0],
+    ])
+        ->and($tables[0])->toBe('seasons')
+        ->and(array_filter($order, fn (array $query): bool => $query[0] === 'season_attestations' && ! $query[1]))->toBe([]);
 });
