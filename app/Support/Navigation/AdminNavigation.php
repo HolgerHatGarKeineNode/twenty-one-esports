@@ -49,11 +49,11 @@ final class AdminNavigation
         'organizers' => 'people',
         'trust' => 'people',
         'fair-play' => 'people',
+        // The checking view of the live season (App\Support\FairPlay\Checks), next to the page that bars.
+        'checks' => 'people',
         'nip05' => 'people',
         'status' => 'system',
         // Site-wide mutes and bans. Here, not under Players & roles or League: in German both are as wide as the nav allows (NavigationMenusTest, 640 px).
-        // The checking view of the live season (App\Support\FairPlay\Checks), next to the page that bars.
-        'checks' => 'people',
         'moderation' => 'system',
         // OBS overlay presets (plan "OBS-Broadcast-Overlays", P2): the stream's tools, next to the status page.
         'overlays' => 'system',
@@ -112,10 +112,10 @@ final class AdminNavigation
                 // A report has no effect until an admin confirms or dismisses it: the admin sees how many wait.
                 self::item('trust', __('Trust'), route('admin.trust'), self::waitingReports()),
                 self::item('fair-play', __('Fair play'), route('admin.fair-play')),
+                self::item('checks', __('Checks'), route('admin.checks')),
                 self::item('nip05', __('Nostr addresses'), route('admin.nip05')),
             ]],
             ['key' => 'system', 'label' => self::groupLabel('system'), 'items' => [
-                self::item('checks', __('Checks'), route('admin.checks')),
                 self::item('status', __('Status'), route('admin.status')),
                 self::item('moderation', __('Moderation'), route('admin.moderation')),
                 self::item('overlays', __('OBS overlays'), route('admin.overlays')),
