@@ -188,10 +188,12 @@ test('/mining and AdminSeason stay clean before Block 0, through the release, an
     $this->travel(1)->minutes();
 
     $admin->goto(ComputeUrl::from(route('admin.season')));
-    $admin->locator('[data-test=change-reason]')->fill('More reward for Rocket League.');
-    $admin->locator('input[wire\:model="weights.rocket-league/1v1"]')->fill('1.5');
+    // Chess mines since Block 0 (defaults of 2026-11-18), so its weight changes alone. Rocket League does not: a weight
+    // for it without a share and a daily limit is refused (SeasonChains::validateChanges()).
+    $admin->locator('[data-test=change-reason]')->fill('More reward for chess blitz.');
+    $admin->locator('[data-test=change-weight-chess-blitz]')->fill('1.5');
     $admin->locator('[data-test=save-change]')->click();
-    BrowserWait::until($admin, '() => document.querySelector("[data-test=season-log]")?.innerText.includes("More reward for Rocket League.")', 10_000);
+    BrowserWait::until($admin, '() => document.querySelector("[data-test=season-log]")?.innerText.includes("More reward for chess blitz.")', 10_000);
 
     expect($admin->evaluate('() => window.__errors'))->toBe([])
         ->and(chainProblems($admin, [route('mining'), route('admin.season')]))->toBe([])
@@ -562,22 +564,24 @@ test('AdminSeason P43: the chain draft form and "What Block 0 signs" stay clean 
     $page->locator('[data-test=draft-share-chess]')->fill('30');
     $page->locator('[data-test=draft-message]')->fill('Block 0: every fair win is a block');
     $page->locator('[data-test=save-draft]')->click();
-    BrowserWait::until($page, '() => document.querySelector("[data-test=settings-log]")?.innerText.includes("32 → 30")', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settings-log]")?.innerText.includes("50 → 30")', 10_000);
 
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate('() => document.querySelector("[data-test=preview-genesis]").innerText'))->toContain('["share","chess","30"]')
-        ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=draft-warning]")].map((el) => el.innerText).join(" | ")'))->toContain('The shares add up to 88 %')
+        ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=draft-warning]")].map((el) => el.innerText).join(" | ")'))->toContain('The shares add up to 30 %')
         ->and(ChainDraft::stored()['shares']['chess'] ?? null)->toBe(30)
         ->and(chainProblems($page, [route('admin.season'), route('home'), route('rules')]))->toBe([]);
 
     // A refused value shows its reason and saves nothing.
     $page->setViewportSize(1440, 900);
     $page->goto(ComputeUrl::from(route('admin.season')));
-    $page->locator('[data-test=draft-share-chess]')->fill('50');
+    // Only chess has a share here (the board games and Hyperbitcoinization are off): a second share takes it over 100 %.
+    $page->locator('[data-test=draft-share-chess]')->fill('60');
+    $page->locator('[data-test=draft-share-rocket-league]')->fill('50');
     $page->locator('[data-test=save-draft]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=draft-error]") !== null', 10_000);
 
-    expect($page->evaluate('() => document.querySelector("[data-test=draft-error]").innerText'))->toContain('The shares add up to 108 %')
+    expect($page->evaluate('() => document.querySelector("[data-test=draft-error]").innerText'))->toContain('The shares add up to 110 %')
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and(ChainDraft::stored()['shares']['chess'] ?? null)->toBe(30);
 });
