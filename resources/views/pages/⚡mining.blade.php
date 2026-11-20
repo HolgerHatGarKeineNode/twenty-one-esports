@@ -3,11 +3,14 @@
 use App\Models\Season;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeasonPayout;
+use App\Models\TrustRank;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\ShareMoments;
+use App\Support\Chess\RatedChess;
 use App\Support\Engagement\HomeBoard;
+use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
@@ -16,9 +19,14 @@ use App\Support\Prizes\PoolInvoices;
 use App\Support\QrCode;
 use App\Support\Rating\LadderBoard;
 use App\Support\SeasonChain\ChainOverview;
+use App\Support\SeasonChain\OpponentLists;
+use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonSettlement;
 use App\Support\SeasonChain\Seasons;
+use App\Support\SeasonChain\TrustFacts;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -105,6 +113,85 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     }
 
     /**
+     * The viewer's own standing for rated chess in a live season (plan "mining-page-clarity" P2, canvas SeasonLive,
+     * NEU (Scope) approved 2026-11-20): the trust rank from the member network against the minimum, the players they
+     * list each other with, and their chess blocks today against the daily limit. Only the viewer sees it, never a
+     * guest or another player; a chip that blocks rated play links to its fix. Scalars only.
+     *
+     * @return list<array{key: string, state: 'ok'|'bad'|'wait', label: string, href: string|null, cta: string|null, title: string|null}>|null
+     */
+    #[Computed]
+    public function standing(): ?array
+    {
+        $user = auth()->user();
+        $season = Seasons::live();
+
+        if (! $user instanceof User || $season === null) {
+            return null;
+        }
+
+        // The same facts the gate reads (AnchoredTrustFacts: the published rank, the archived lists), read once each.
+        $facts = app(TrustFacts::class);
+        $minimum = RatedTrustGate::minimum();
+        $chips = [];
+
+        if (! $facts->available()) {
+            $chips[] = ['key' => 'trust', 'state' => 'wait', 'label' => __('Trust ranks not computed yet'), 'href' => null, 'cta' => null, 'title' => RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED)];
+        } elseif (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
+            $chips[] = ['key' => 'trust', 'state' => 'bad', 'label' => __('Barred from rated play'), 'href' => null, 'cta' => null, 'title' => $barred];
+        } else {
+            $rank = (int) (TrustRank::query()->where('pubkey', $user->pubkey)->value('rank') ?? 0);
+            $trusted = $rank >= $minimum;
+            $chips[] = ['key' => 'trust', 'state' => $trusted ? 'ok' : 'bad', 'label' => __('Trust rank :rank, needs :minimum', ['rank' => $rank, 'minimum' => $minimum]),
+                'href' => $trusted ? null : route('settings.opponents'), 'cta' => $trusted ? null : __('How it rises'),
+                'title' => $trusted ? null : __('Rated from trust rank :minimum. It rises when members add you as an opponent.', ['minimum' => $minimum])];
+        }
+
+        // Mutual: on my newest list, and their newest list names me (Opponents::mutual(), in two reads instead of one per entry).
+        $lists = OpponentLists::forLeague();
+        $mutual = $lists === null ? 0 : count(array_intersect(app(Opponents::class)->entries($user), $lists->listing($user->pubkey)));
+        $chips[] = $mutual > 0
+            ? ['key' => 'opponents', 'state' => 'ok', 'label' => trans_choice(':count mutual opponent|:count mutual opponents', $mutual), 'href' => null, 'cta' => null, 'title' => null]
+            : ['key' => 'opponents', 'state' => 'bad', 'label' => __('No mutual opponent'), 'href' => route('settings.opponents'), 'cta' => __('Add one'), 'title' => __('Rated needs an opponent who adds you back.')];
+
+        $inForce = $this->chain['in_force'];
+        $limit = $inForce->dailyLimitFor('chess');
+
+        if ($limit !== null) {
+            // Consensus rule 5 counts a player's blocks of the game's share group per UTC day.
+            $shareKey = $inForce->shareKey('chess');
+            $today = $season->attestations()->whereNotNull('height')->where('attested_at', '>=', CarbonImmutable::now()->utc()->startOfDay())->get(['game', 'candidate'])
+                ->filter(fn ($block): bool => $inForce->shareKey((string) $block->game) === $shareKey && in_array($user->pubkey, $block->winners(), true))->count();
+            $chips[] = ['key' => 'today', 'state' => $today >= $limit ? 'bad' : 'ok', 'label' => __(':game today :count of :limit blocks', ['game' => ChainOverview::gameLabel($shareKey), 'count' => $today, 'limit' => $limit]),
+                'href' => null, 'cta' => null, 'title' => $today >= $limit ? __('The daily limit is reached; the next block counts from midnight UTC.') : null];
+        }
+
+        return $chips;
+    }
+
+    /**
+     * The cheapest and the dearest win that mines now, over every mode of every game with a share: the figures the
+     * stream's season slides read from the same ChainOverview::keys() rows (SeasonSlides::sharePays()).
+     *
+     * @param  array<string, array{modes: array<string, array{pays: int}>}>  $keys
+     * @return array{0: int, 1: int}|null
+     */
+    protected function winRange(array $keys): ?array
+    {
+        $pays = [];
+
+        foreach ($keys as $key) {
+            foreach ($key['modes'] as $weightKey => $mode) {
+                if (ChainOverview::mines((string) $weightKey) && $mode['pays'] > 0) {
+                    $pays[] = (int) $mode['pays'];
+                }
+            }
+        }
+
+        return $pays === [] ? null : [min($pays), max($pays)];
+    }
+
+    /**
      * The ladders of the league per game (Season.dc.html "Ladders"): the registry's display order, each game's modes
      * and the page its first ladder opens; the score games keep leaderboards, not ladders.
      *
@@ -176,8 +263,9 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     $settlement = $this->settlement;
     $unmined = $hasChain ? max(0, $chain['supply'] - ($live ? $chain['estimate']['end_mined'] : $chain['mined'])) : null;
     $block0At = $live || $ended ? null : PreSeason::block0At();
+    // Live: the state, not the season's name ("Pre-Season" read as "not started yet" after Block 0, plan P2).
     $stateTag = match (true) {
-        $live => BadgeCopy::season($chain['season']->slug),
+        $live => __('Live since :date', ['date' => $date($chain['season']->genesis_at, 'j M')]),
         $ended => __('Between seasons'),
         default => __('Pre-Season'),
     };
@@ -212,12 +300,66 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
 <div class="flex grow flex-col gap-4 px-4 pt-4 pb-10 lg:gap-6 lg:px-12 lg:pt-8" data-test="mining" data-state="{{ $state }}">
     <div class="flex flex-wrap items-center gap-4">
         <h1 class="rv-h1 max-lg:text-[24px]">{{ __('Season') }}</h1>
-        <span class="rv-tag" data-test="season-state">{{ $stateTag }}</span>
+        <span @class(['rv-tag', 'is-ok' => $live]) data-test="season-state">{{ $stateTag }}</span>
     </div>
 
     <x-ui.live-bar :ticks="(new HomeBoard($viewer instanceof User ? $viewer : null))->ticker()" />
 
-    @unless ($live)
+    @if ($live)
+        @php
+            $standing = $this->standing;
+            $tip = (int) $chain['blocks'];
+        @endphp
+        {{-- The live hero (canvas SeasonLive, plan "mining-page-clarity" P2, rules R3, R14, R15): what to do to mine, the one
+             primary action, the way to how it works, and the viewer's own standing (NEU (Scope), approved 2026-11-20). --}}
+        <section aria-labelledby="mine-h" class="sn-hero" data-test="mining-hero">
+            <div class="flex min-w-0 flex-col gap-4">
+                <h2 id="mine-h" class="m-0 max-w-[26ch] font-display text-[22px] leading-[1.15] font-bold lg:text-[36px]">{{ __('Win a rated game, mine the next block') }}</h2>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    @if ($viewer instanceof User)
+                        <a href="{{ route('chess.lobby') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated">{{ RatedChess::offered() ? __('Play rated chess') : __('Play a casual game') }}</a>
+                    @else
+                        <a href="{{ route('login') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="login">{{ __('Log in to mine') }}</a>
+                    @endif
+                    <a href="#season-reference" class="rv-lk inline-flex min-h-11 items-center text-[13px]" data-test="mining-how"
+                       x-data x-on:click="const d = document.getElementById('season-reference'); (d?.tagName === 'DETAILS' ? d : d?.querySelector('details'))?.setAttribute('open', '')">{{ __('How mining works') }}</a>
+                </div>
+                @if ($standing !== null)
+                    <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('Your standing for rated play') }}" data-test="mining-standing">
+                        @foreach ($standing as $chip)
+                            @php
+                                $chipClass = ['inline-flex min-h-11 items-center gap-2 rounded-[4px] border px-3 text-[13px] whitespace-nowrap',
+                                    'border-win-ring bg-win-tint' => $chip['state'] === 'ok', 'border-live-ring bg-live-tint' => $chip['state'] === 'bad', 'border-line bg-ground text-ink-2' => $chip['state'] === 'wait'];
+                            @endphp
+                            <li class="flex min-w-0" data-test="standing-{{ $chip['key'] }}" data-state="{{ $chip['state'] }}">
+                                @if ($chip['href'] !== null)
+                                    <a href="{{ $chip['href'] }}" @class($chipClass) @if ($chip['title']) title="{{ $chip['title'] }}" @endif>
+                                        <x-icon name="alert" :size="14" class="shrink-0 text-loss" /><span>{{ $chip['label'] }}</span> <span class="text-loss underline underline-offset-2">{{ $chip['cta'] }}</span>
+                                    </a>
+                                @else
+                                    <span @class($chipClass) @if ($chip['title']) title="{{ $chip['title'] }}" @endif>
+                                        <x-icon :name="match ($chip['state']) { 'ok' => 'check', 'bad' => 'alert', default => 'clock' }" :size="14" :class="match ($chip['state']) { 'ok' => 'shrink-0 text-win', 'bad' => 'shrink-0 text-loss', default => 'shrink-0' }" /><span>{{ $chip['label'] }}</span>
+                                    </span>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p class="m-0 max-w-[60ch] text-xs text-ink-2" data-test="mining-guest-note">{{ __('Rated play needs trust rank :minimum and an opponent who adds you back.', ['minimum' => RatedTrustGate::minimum()]) }}</p>
+                @endif
+            </div>
+            {{-- The tip of the chain and the blocks still to come: the next one waits for a fair rated win. --}}
+            <div class="flex items-center max-lg:hidden" role="img" aria-label="{{ __('Chain: block :tip is the newest, block :next waits for the next fair rated win', ['tip' => $tip, 'next' => $tip + 1]) }}">
+                <span class="sn-genesis"><span class="rv-cube-tp"></span><span class="rv-cube-sd"></span>
+                    <span class="sn-genesis-fr" data-test="tip-cube"><b class="text-xs">{{ $tip === 0 ? __('Genesis') : __('Newest') }}</b><span class="font-display text-[18px] leading-[1.2] font-bold whitespace-nowrap">{{ __('Block :height', ['height' => $tip]) }}</span><span class="text-xs leading-[1.2]">{{ $date($chain['last_block_at'] ?? $chain['season']->genesis_at, 'j M, H:i') }}</span></span>
+                </span>
+                @foreach ([66, 60, 54] as $index => $size)
+                    <span class="sn-link" aria-hidden="true"></span>
+                    <span class="sn-ghost" style="width: {{ $size }}px; height: {{ $size }}px; opacity: {{ 0.85 - $index * 0.15 }}" aria-hidden="true">{{ $tip + $index + 1 }}</span>
+                @endforeach
+            </div>
+        </section>
+    @else
         <section aria-labelledby="b0-h" class="sn-hero" data-test="mining-rest">
             <div class="flex min-w-0 flex-col gap-3">
                 <span class="rv-tag is-btc self-start">{{ $ended ? __('Between seasons') : __('Pre-Season · countdown to Block 0') }}</span>
@@ -256,7 +398,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 @endforeach
             </div>
         </section>
-    @endunless
+    @endif
 
     {{-- P46: at season end, the player's own Season Wrapped card with its post (preview first, then the signer) --}}
     @if ($ended && $hasChain && $viewer instanceof User && ShareMoments::hasWrapped($chain['season'], $viewer))
@@ -284,7 +426,10 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     [__('Mined'), $sats($chain['mined']), $minedOf],
                     [__('Left to mine'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
                     [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
-                    [$payLabel, $payKey ? $sats($chain['rewards_now'][$payKey]) : '0', __('sats per winner, now')],
+                    // The cheapest to the dearest win now, the stream slides' figure, instead of one mode picked out of all.
+                    ($range = $this->winRange($chain['keys'])) === null
+                        ? [__('A win pays'), '0', __('no game mines right now')]
+                        : [__('A win pays'), $range[0] === $range[1] ? $sats($range[0]) : __(':low to :high', ['low' => $sats($range[0]), 'high' => $sats($range[1])]), __('sats per winner now, by mode'), 'stat-win-range'],
                 ],
                 $ended => [
                     [__('Blocks'), (string) $chain['blocks'], __('at the season end')],
@@ -305,8 +450,11 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 ],
             };
         @endphp
-        @foreach ($stats as [$label, $value, $sub])
-            <div @class(['rv-card flex min-w-0 flex-col gap-1 p-4', 'col-span-2 lg:col-span-1' => $loop->last])>
+        @foreach ($stats as $stat)
+            @php
+                [$label, $value, $sub] = $stat;
+            @endphp
+            <div @class(['rv-card flex min-w-0 flex-col gap-1 p-4', 'col-span-2 lg:col-span-1' => $loop->last]) @isset($stat[3]) data-test="{{ $stat[3] }}" @endisset>
                 <span class="rv-m">{{ $label }}</span>
                 <b class="font-display text-[22px] leading-tight lg:text-[26px]">{{ $value }}</b>
                 <span class="rv-m">{{ $sub }}</span>
