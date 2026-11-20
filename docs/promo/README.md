@@ -178,7 +178,7 @@ php -S 127.0.0.1:8919 docs/promo/src/nostr-bridge.php
 
 Localhost-only. Reads `TWENTYONE_NOSTR_NSEC` from `.env` at runtime — the secret is never
 written to any file, never printed. Publishes to the project's public relays
-(relay.damus.io, nos.lol, relay.primal.net, nostr.mom), uploads to
+(`twentyone.relays.public`: nos.lol, relay.primal.net, nostr.mom), uploads to
 blossom.einundzwanzig.space (fallback: blossom.primal.net).
 
 ## Posting plan (from `src/copy/posts.md`)

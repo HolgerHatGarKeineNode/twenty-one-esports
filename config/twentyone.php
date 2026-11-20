@@ -103,7 +103,7 @@ return [
             'wss://relay.snort.social',
             'wss://offchain.pub',
             'wss://nostr.bitcoiner.social',
-            'wss://nostr.oxtr.dev',
+            'wss://relay.ditto.pub',
         ],
 
         'event' => [

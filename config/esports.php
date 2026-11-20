@@ -77,7 +77,7 @@ return [
 
     'profile_relays' => array_values(array_filter(array_map('trim', explode(',', env('APP_ENV') === 'testing'
         ? (string) env('ESPORTS_PROFILE_RELAYS', '')
-        : ((string) env('ESPORTS_PROFILE_RELAYS') ?: 'wss://purplepag.es,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social'))))),
+        : ((string) env('ESPORTS_PROFILE_RELAYS') ?: 'wss://purplepag.es,wss://relay.ditto.pub,wss://nos.lol,wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social'))))),
 
     /*
     |--------------------------------------------------------------------------
@@ -873,8 +873,9 @@ return [
 
         // League relays the mute list writer neither reads nor counts towards its quorum: measured
         // unreachable from production on 2026-09-26 (relay.damus.io answers 403, nos.lol does not
-        // connect). Comma-separated in ESPORTS_MUTE_LIST_UNREACHABLE; empty string for none.
-        'mute_list_unreachable' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_MUTE_LIST_UNREACHABLE', 'wss://nos.lol,wss://relay.damus.io'))))),
+        // connect). relay.damus.io left the league relays on 2026-11-20 (dead from prod and workstation), so
+        // it no longer needs skipping. Comma-separated in ESPORTS_MUTE_LIST_UNREACHABLE; empty string for none.
+        'mute_list_unreachable' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_MUTE_LIST_UNREACHABLE', 'wss://nos.lol'))))),
     ],
 
     /*
@@ -1130,13 +1131,17 @@ return [
     | account's own NIP-65 list (primal, nostr.mom; damus and nos.lol too,
     | although damus answered 403 and nos.lol was unreachable from the prod
     | server on 2026-09-26) plus the relays the stream uses from prod.
+    | On 2026-11-20 relay.damus.io and nostr.oxtr.dev served no REQ from prod
+    | or the workstation and gave way to relay.ditto.pub and
+    | relay.nostr.wirednet.jp, both of which took the league's own kinds
+    | (2154, 32150) from a throwaway key.
     |
     */
 
     'relays' => array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
         'local' => (string) (env('ESPORTS_RELAYS') ?: 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782'),
         'testing' => (string) env('ESPORTS_RELAYS', ''),
-        default => (string) (env('ESPORTS_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.damus.io,wss://nos.lol,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev'),
+        default => (string) (env('ESPORTS_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.ditto.pub,wss://nos.lol,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp'),
     })))),
 
     'relay_timeout_seconds' => 5,
@@ -1473,7 +1478,7 @@ return [
             : array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_STREAM_CHAT_RELAYS'))))),
         'public_relays' => array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
             'local', 'testing' => (string) env('ESPORTS_STREAM_CHAT_PUBLIC_RELAYS', ''),
-            default => (string) (env('ESPORTS_STREAM_CHAT_PUBLIC_RELAYS') ?: 'wss://nos.lol,wss://relay.damus.io,wss://relay.primal.net,wss://relay.snort.social'),
+            default => (string) (env('ESPORTS_STREAM_CHAT_PUBLIC_RELAYS') ?: 'wss://nos.lol,wss://relay.ditto.pub,wss://relay.primal.net,wss://relay.snort.social'),
         })))),
         'zap_signers' => array_values(array_filter(array_map('trim', explode(',', (string) env(
             'ESPORTS_STREAM_ZAP_SIGNERS',
@@ -1518,7 +1523,8 @@ return [
     | testing, where the chat relays suffice). The default (user, 2026-10-05: „Mehr
     | Relays einsetzen und Relays dürfen soft failen!") adds the public relays
     | that answered from the prod server on 2026-09-26 (primal, nostr.mom,
-    | snort, offchain.pub, nostr.bitcoiner.social, nostr.oxtr.dev). A relay
+    | snort, offchain.pub, nostr.bitcoiner.social; relay.ditto.pub replaced
+    | nostr.oxtr.dev, dead from prod and workstation on 2026-11-20). A relay
     | that refuses (rate limit, a newer kind 41, a timeout) is logged and
     | never fails the run. The kind 41 still names only the chat relays.
     |
@@ -1534,7 +1540,7 @@ return [
         'creator' => env('ESPORTS_GAME_CHAT_CREATOR'),
         'publish_relays' => array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
             'local', 'testing' => (string) env('ESPORTS_GAME_CHANNEL_RELAYS', ''),
-            default => (string) (env('ESPORTS_GAME_CHANNEL_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev'),
+            default => (string) (env('ESPORTS_GAME_CHANNEL_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://relay.ditto.pub'),
         })))),
         'max_length' => 280,
         'cooldown_ms' => 2000,

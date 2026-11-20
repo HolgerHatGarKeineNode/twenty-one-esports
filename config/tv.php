@@ -472,7 +472,7 @@ return [
             // the newest kind 0 per pubkey); none in tests.
             'relays' => array_values(array_filter(array_map('trim', explode(',', env('APP_ENV') === 'testing'
                 ? (string) env('TV_COMMENTARY_TOURNAMENT_LIVE_RELAYS', '')
-                : ((string) env('TV_COMMENTARY_TOURNAMENT_LIVE_RELAYS') ?: 'wss://nos.lol,wss://relay.nostr.band,wss://relay.primal.net,wss://purplepag.es,wss://relay.damus.io'))))),
+                : ((string) env('TV_COMMENTARY_TOURNAMENT_LIVE_RELAYS') ?: 'wss://nos.lol,wss://relay.ditto.pub,wss://relay.primal.net,wss://purplepag.es,wss://nostr.mom'))))),
             'model' => env('TV_COMMENTARY_TOURNAMENT_LIVE_MODEL'),
         ],
         'blocks' => [
@@ -1368,7 +1368,7 @@ return [
             // None answering: `esports.relays`. Read one after the other; `knowledge_budget_seconds` stops starting the next.
             'knowledge_relays' => array_values(array_filter(array_map('trim', explode(',', env('APP_ENV') === 'testing'
                 ? (string) env('TV_COMMENTARY_KNOWLEDGE_RELAYS', '')
-                : ((string) env('TV_COMMENTARY_KNOWLEDGE_RELAYS') ?: 'wss://purplepag.es,wss://relay.primal.net,wss://nostr.oxtr.dev,wss://nostr.mom'))))),
+                : ((string) env('TV_COMMENTARY_KNOWLEDGE_RELAYS') ?: 'wss://purplepag.es,wss://relay.primal.net,wss://relay.ditto.pub,wss://nostr.mom'))))),
             'knowledge_budget_seconds' => 8,
             // Then the chatter's own write relays from that 10002 (kind 3's legacy map without one), NIP-65 outbox: at most
             // `outbox_relays`, untrusted (RelayReader::readGuarded()), within `outbox_budget_seconds`; one that fails is
@@ -1376,7 +1376,7 @@ return [
             'outbox_relays' => 4,
             'outbox_budget_seconds' => 6,
             'outbox_down_minutes' => 60,
-            'outbox_skip' => ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://inbox.nostr.wine'],
+            'outbox_skip' => ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nostr.oxtr.dev', 'wss://inbox.nostr.wine'],
             // The newest own notes (no replies) a refresh keeps, and how many of them a reply prompt carries, each cut.
             'knowledge_notes' => 15,
             'prompt_notes' => 3,

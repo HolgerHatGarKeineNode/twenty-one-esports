@@ -94,13 +94,14 @@ function leagueRelayList(TestSigner $league, array $relays): SignedEvent
 
 /**
  * The league relays as in production, and the key's relay list as measured
- * there on 2026-10-05: nos.lol, relay.primal.net, nostr.mom. From production
- * damus answers 403 and nos.lol does not connect, so the quorum is primal and
- * nostr.mom. Only the fake reader sees these URLs; nothing connects.
+ * there on 2026-10-05: nos.lol, relay.primal.net, nostr.mom. nos.lol stays on
+ * the unreachable list, and relay.damus.io is no league relay since 2026-11-20,
+ * so the quorum is primal and nostr.mom. Its stand-in relay.ditto.pub is left
+ * out here: no write relay of the key's list names it. Only the fake reader sees these URLs; nothing connects.
  */
 function productionRelays(TestCase $test): void
 {
-    config(['esports.relays' => ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.snort.social']]);
+    config(['esports.relays' => ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://nos.lol', 'wss://relay.snort.social']]);
     $test->relays->relayList = leagueRelayList($test->league, [['r', 'wss://nos.lol/'], ['r', 'wss://relay.primal.net/'], ['r', 'wss://nostr.mom/']]);
 }
 
@@ -413,7 +414,7 @@ test('on unless switched off, and the hourly reconcile runs only while it is on'
     // On by default again since the relay quorum guards the read (security gate 2026-10-05, F1); false is the kill switch.
     config(['esports.league.mute_list' => true]);
     expect($default)->toBeTrue()
-        ->and($unreachable)->toBe(['wss://nos.lol', 'wss://relay.damus.io'])
+        ->and($unreachable)->toBe(['wss://nos.lol'])
         ->and($killed)->toBeFalse()
         ->and($event)->not->toBeNull()
         ->and($event->expression)->toBe('0 * * * *')
@@ -520,7 +521,7 @@ test('F1: a quorum relay is down while another relay answers empty: nothing is s
         ->and(NostrEvent::query()->where('kind', 10000)->count())->toBe(1);
 });
 
-test('F1: the quorum answers: the 604-character private part is carried byte for byte, dated one second after the base, damus and nos.lol never read', function () {
+test('F1: the quorum answers: the 604-character private part is carried byte for byte, dated one second after the base, nos.lol never read', function () {
     Queue::fake();
     productionRelays($this);
     $private = 'Ag'.substr(str_repeat(base64_encode(random_bytes(48)), 13), 0, 602);

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\File;
  * announces it as its NIP-53 `relays` tag. Measured that day: a kind 1311 on
  * nos.lol and damus only (where zap.stream posts for a user with its default
  * relays) never showed on /live, which read just the six stream relays.
+ * relay.damus.io died by 2026-11-20 and gave way to relay.ditto.pub.
  */
 
 beforeEach(function () {
@@ -50,7 +51,7 @@ test('more than ten relays are cut at ten, the stream relays first', function ()
         ->and(array_slice(StreamChat::current()->relays, 0, 2))->toBe(['wss://stream.example', 'wss://second.example']);
 });
 
-test('production reads and posts on nos.lol and damus besides the stream relays', function () {
+test('production reads and posts on nos.lol and relay.ditto.pub besides the stream relays', function () {
     $saved = [$_SERVER['APP_ENV'] ?? null, $_ENV['APP_ENV'] ?? null, getenv('APP_ENV')];
     $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'production';
     putenv('APP_ENV=production');
@@ -68,8 +69,8 @@ test('production reads and posts on nos.lol and damus besides the stream relays'
         'esports.stream_bot.chat_relays' => [],
     ]);
 
-    expect($publicRelays)->toContain('wss://nos.lol', 'wss://relay.damus.io')
-        ->and(StreamChat::current()->relays)->toContain('wss://nos.lol', 'wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nostr.mom');
+    expect($publicRelays)->toContain('wss://nos.lol', 'wss://relay.ditto.pub')
+        ->and(StreamChat::current()->relays)->toContain('wss://nos.lol', 'wss://relay.ditto.pub', 'wss://relay.primal.net', 'wss://nostr.mom');
 });
 
 test('the caster reads the chat on exactly the relays the /live page reads', function () {

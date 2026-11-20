@@ -49,7 +49,7 @@ function esportsConfigUnder(array $env): array
 
 // relay.damus.io is left out of the chat on purpose: it takes gift wraps but serves them to no one (P5d relay smoke).
 const PUBLIC_CHAT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
-const PUBLIC_LEAGUE_RELAYS = ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.bitcoiner.social', 'wss://nostr.oxtr.dev'];
+const PUBLIC_LEAGUE_RELAYS = ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.ditto.pub', 'wss://nos.lol', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.bitcoiner.social', 'wss://relay.nostr.wirednet.jp'];
 const NDAK_TEST_BED = ['ws://127.0.0.1:7777', 'ws://127.0.0.1:7780', 'ws://127.0.0.1:7782'];
 
 test('an unset or empty relay key takes the environment default: public sets in production, the test bed locally, nothing in testing', function (string $environment, ?string $value, array $chat, array $league) {
