@@ -161,6 +161,28 @@ test('the bar and the chain come from the league: a result, a move and the games
         ->and(homeCount($html, 'data-test="chain-cube"'))->toBe(2);
 });
 
+test('while a season runs the season band leads the page and the chain shows the rated matches alone', function () {
+    $this->freezeTime();
+    openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDay(), 'ends_at' => now()->addDays(30)]);
+    $rated = ChessGame::factory()->rated()->finished()->create(['ended_at' => now()->subMinutes(30)]);
+    ChessGame::factory()->finished()->create(['ended_at' => now()->subMinutes(20)]);
+
+    $html = $this->get(route('home'))->assertOk()->getContent();
+    $chain = str($html)->after('data-test="home-mempool"')->before('data-test="home-games"')->toString();
+
+    expect($html)->toContain('data-test="home-season-band"')
+        ->and(strpos($html, 'data-test="home-season-band"'))->toBeLessThan(strpos($html, 'data-test="home-grid"'))
+        ->and($chain)->toStartWith(' data-chain="season"')->toContain(__('Season chain'))->toContain('data-test="mempool-casual"')
+        ->and(homeCount($chain, 'data-test="chain-cube"'))->toBe(1)
+        ->and($chain)->toContain('href="'.route('games.show', $rated).'"');
+
+    // After the season: no band, every game in the mempool again.
+    $this->travel(31)->days();
+    $after = $this->get(route('home'))->assertOk()->getContent();
+    expect($after)->not->toContain('data-test="home-season-band"')->toContain('data-chain="all"')
+        ->and(homeCount($after, 'data-test="chain-cube"'))->toBe(2);
+});
+
 test('the queries do not grow with entrants, boards, results, newcomers or ladder rows', function () {
     $queries = function (): int {
         // Warm: a new player or clan forgets the cached newcomers (HomeHub::newcomers()), the next visit refills it.

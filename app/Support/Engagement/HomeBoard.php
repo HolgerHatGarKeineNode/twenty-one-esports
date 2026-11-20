@@ -132,13 +132,15 @@ final class HomeBoard
     }
 
     /**
-     * The mempool strip of every game, highscore attempts included, as /matches draws it.
+     * The mempool strip as /matches opens it: while a season runs its chain alone, the rated matches whose wins
+     * mine it (user 2026-11-20: Block 0 is out, the casual matches crowded the season off the start page); before
+     * Block 0 and between seasons every game, highscore attempts included.
      *
      * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}
      */
     public function strip(): array
     {
-        return $this->strip ??= MempoolStrip::build($this->viewer, null, runs: true);
+        return $this->strip ??= MempoolStrip::build($this->viewer, Seasons::isLive() ? 'season' : null, runs: true);
     }
 
     /**

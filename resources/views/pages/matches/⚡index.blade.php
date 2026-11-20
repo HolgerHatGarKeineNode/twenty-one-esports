@@ -23,6 +23,7 @@ use App\Support\Hyper\HyperTeams;
 use App\Support\Matches\MempoolStrip;
 use App\Support\Matches\ScoreAttempts;
 use App\Support\PageMeta;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -99,8 +100,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
      */
     public function filterUrl(array $change): string
     {
+        // The chain the page opens on stays out of the address; while a season runs that is "season", so "all" is spelt out.
+        $home = $this->homeChain();
         $query = array_filter([...['game' => $this->game, 'clan' => $this->clan, 'status' => $this->status, 'chain' => $this->chain], ...$change],
-            fn (string $value, string $key): bool => $value !== '' && ! ($value === 'all' && $key !== 'clan'), ARRAY_FILTER_USE_BOTH);
+            fn (string $value, string $key): bool => $value !== '' && ($key === 'chain' ? $value !== $home : $value !== 'all'), ARRAY_FILTER_USE_BOTH);
 
         return route('matches.index', $query);
     }
@@ -175,7 +178,17 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     public function mount(): void
     {
         $this->game = $this->listable($this->game) ? $this->game : 'all';
-        $this->chain = array_key_exists($this->chain, MempoolStrip::CHAINS) ? $this->chain : 'all';
+        $this->chain = request()->query('chain') === null ? $this->homeChain()
+            : (array_key_exists($this->chain, MempoolStrip::CHAINS) ? $this->chain : 'all');
+    }
+
+    /**
+     * The chain /matches opens on: the season chain while a season runs (user 2026-11-20: Block 0 is out, the
+     * season comes first and the casual matches are a click away), every match before Block 0 and between seasons.
+     */
+    public function homeChain(): string
+    {
+        return Seasons::isLive() ? 'season' : 'all';
     }
 
     public function pickChain(string $chain): void
@@ -197,7 +210,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     /** The header's chain rail marks the view on screen (resources/js/shellNav.js `followMatchesFilter`). */
     private function dispatchFilter(): void
     {
-        $this->dispatch('matches-filter', chain: $this->chain, game: $this->game);
+        $this->dispatch('matches-filter', chain: $this->chain, game: $this->game, home: $this->homeChain());
     }
 
     /**
@@ -559,8 +572,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $counts = $this->counts;
     $registry = app(GameRegistry::class);
     $board = new HomeBoard($viewer);
+    $seasonFirst = $this->homeChain() === 'season';
+    $chainKeys = $seasonFirst ? ['season' => __('Season'), 'all' => __('All'), 'casual' => __('Casual')] : ['all' => __('All'), 'season' => __('Season'), 'casual' => __('Casual')];
     $chainChips = array_map(fn (string $key, string $label): array => ['key' => $key, 'label' => $label, 'href' => $this->filterUrl(['chain' => $key]), 'active' => $chain === $key],
-        ['all', 'season', 'casual'], [__('All'), __('Season'), __('Casual')]);
+        array_keys($chainKeys), $chainKeys);
     $gameChips = [
         ['key' => 'all', 'label' => __('All'), 'href' => $this->filterUrl(['game' => 'all']), 'active' => $game === 'all'],
         ...array_map(fn (string $slug): array => ['key' => $slug, 'label' => __($registry->groupOf($slug)->name ?? $registry->get($slug)->assets()->shortLabel), 'href' => $this->filterUrl(['game' => $slug]), 'active' => $registry->entry($game) === $slug], $this->orderedGames()),
@@ -586,6 +601,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         <livewire:cup-match variant="banner" frame="block" wire:key="cup-banner-matches" />
         <livewire:upcoming-events only="series" frame="" wire:key="upcoming-rooms" />
     @endauth
+
+    {{-- The live season on top (user 2026-11-20: Block 0 is out and has to show); the chain filter under it then opens on "Season". --}}
+    @if ($seasonFirst)
+        <x-ui.season-band :season="HomeBoard::season()" :viewer="$viewer" test="matches-season" />
+    @endif
 
     <section class="flex flex-col gap-4" aria-labelledby="mempool-h" data-test="mempool-head">
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">

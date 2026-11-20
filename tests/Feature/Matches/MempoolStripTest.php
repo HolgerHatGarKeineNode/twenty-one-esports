@@ -21,8 +21,10 @@ use App\Models\SeasonAttestation;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Formats;
 use App\Support\Matches\MatchBlocks;
 use App\Support\Matches\MempoolStrip;
+use App\Support\PreSeason;
 use App\Support\SeasonChain\Candidate;
 use App\Support\SeasonChain\Resolution;
 use App\Support\Series\SeriesPresenter;
@@ -335,6 +337,35 @@ test('the Chain filter narrows strip, table and status counts to the rated or th
         ->call('pickChain', 'season')->assertSet('chain', 'season')->assertDispatched('matches-filter', chain: 'season', game: 'all')
         ->tap(fn ($component) => expect($component->instance()->counts['live'])->toBe(0))
         ->call('pickChain', 'all')->assertSet('chain', 'all');
+});
+
+test('while a season runs the page opens on the season chain under a band with its block, and every match is one chip away', function () {
+    $this->freezeTime();
+    $season = openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDay(), 'ends_at' => now()->addDays(30)]);
+    $rated = ChessGame::factory()->rated()->finished()->create(['ended_at' => now()->subMinutes(30)]);
+    $casual = ChessGame::factory()->finished()->create(['ended_at' => now()->subMinutes(20)]);
+
+    $home = $this->get(route('matches.index'))->assertOk()->getContent();
+    $all = $this->get(route('matches.index', ['chain' => 'all']))->assertOk()->getContent();
+
+    // The season comes first: its chip leads the row and is on, the casual game is not listed until asked for.
+    expect($home)->toContain('data-test="matches-season"')->toContain('data-test="matches-season-height"')
+        ->toContain(e(__('Block 0 mined on :when', ['when' => Formats::date($season->genesis_at, true, PreSeason::timezoneFor(null))])))
+        ->toMatch('/aria-current="page"\s+class="rv-chip"\s+data-test="chain-season"/')
+        ->toContain('wire:key="c-'.$rated->id.'"')->not->toContain('wire:key="c-'.$casual->id.'"')
+        ->and(strpos($home, 'data-test="chain-season"'))->toBeLessThan(strpos($home, 'data-test="chain-all"'))
+        // "All" spells itself out in the address, the season view is the bare page.
+        ->and($home)->toContain('href="'.route('matches.index', ['chain' => 'all']).'"')
+        ->and($all)->toMatch('/aria-current="page"\s+class="rv-chip"\s+data-test="chain-all"/')
+        ->toContain('wire:key="c-'.$casual->id.'"')->toContain('href="'.route('matches.index').'"');
+
+    Livewire::test('pages::matches.index')->assertSet('chain', 'season')
+        ->call('pickChain', 'all')->assertSet('chain', 'all')->assertDispatched('matches-filter', chain: 'all', game: 'all', home: 'season');
+
+    // Before Block 0 and after the season: no band, the page opens on every match.
+    $this->travel(31)->days();
+    expect($this->get(route('matches.index'))->assertOk()->getContent())->not->toContain('data-test="matches-season"')
+        ->toMatch('/aria-current="page"\s+class="rv-chip"\s+data-test="chain-all"/');
 });
 
 test('an unknown chain in the address shows every match, and the filter still works with the board games switched off', function () {

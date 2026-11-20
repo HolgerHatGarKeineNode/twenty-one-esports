@@ -60,6 +60,13 @@
         <livewire:upcoming-events variant="card" />
     @endauth
 
+    {{-- The live season before everything the boards draw (user 2026-11-20: Block 0 is out and the season comes first). --}}
+    @if ($season['live'])
+        <div class="mx-auto w-full max-w-[1440px] px-4 pt-4 lg:px-12 lg:pt-6">
+            <x-ui.season-band :season="$season" :viewer="$user" test="home-season-band" />
+        </div>
+    @endif
+
     @if ($hero === 'cup')
         @include('pages.home.band-cup', ['cup' => $featured, 'live' => $counts['live']])
     @elseif ($hero === 'blockfill')
@@ -72,7 +79,7 @@
 
     <div class="mx-auto grid w-full max-w-[1440px] grid-cols-1 items-start gap-0 lg:grid-cols-[minmax(0,8fr)_minmax(0,4fr)] lg:gap-6 lg:px-12 lg:pt-6 lg:pb-8" data-test="home-grid">
         <div class="flex min-w-0 flex-col lg:gap-8">
-            @include('pages.home.mempool', ['strip' => $strip, 'counts' => $counts, 'pride' => $pride, 'user' => $user, 'best' => $board->bestToday()])
+            @include('pages.home.mempool', ['season' => $season, 'strip' => $strip, 'counts' => $counts, 'pride' => $pride, 'user' => $user, 'best' => $board->bestToday()])
             @include('pages.home.games', ['games' => $games, 'count' => $gameCount])
         </div>
 

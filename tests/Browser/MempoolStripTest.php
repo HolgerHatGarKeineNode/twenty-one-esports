@@ -7,6 +7,7 @@ use App\Enums\StackerRunStatus;
 use App\Games\Blockfill;
 use App\Games\Checkers;
 use App\Games\NineMensMorris;
+use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonBlockVoid;
@@ -71,13 +72,13 @@ beforeEach(function () {
     CheckersGame::play();
 });
 
-function mempoolPage(User $user, int $width, string $locale): Page
+function mempoolPage(User $user, int $width, string $locale, array $query = [], string $route = 'matches.index'): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, 900);
     $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
-    $page->goto(ComputeUrl::from(route('matches.index', absolute: false)));
+    $page->goto(ComputeUrl::from(route($route, $query, false)));
     BrowserWait::until($page, '() => document.readyState === "complete" && document.fonts.status === "loaded"', 10_000);
 
     return $page;
@@ -114,7 +115,8 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
     foreach (['en', 'de'] as $locale) {
         foreach ([320, 375, 1280] as $width) {
             $where = "/matches {$locale} at {$width}";
-            $page = mempoolPage($viewer, $width, $locale);
+            // A season runs, so the bare page opens on its chain; every game is ?chain=all.
+            $page = mempoolPage($viewer, $width, $locale, ['chain' => 'all']);
 
             expect($page->evaluate('() => document.documentElement.lang'))->toBe($locale, $where)
                 ->and($page->evaluate('() => document.querySelectorAll("[data-test=chain-cube]").length'))->toBe(9, $where)
@@ -241,4 +243,74 @@ test('/matches keeps highscore attempts and matches whole together at 375 and 14
 
     expect(implode(' ', $page->evaluate('() => window.__errors')))->toContain('runs positive control')
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->not->toBe([]);
+});
+
+/*
+| The live season first (user 2026-11-20): on / and /matches the season band
+| leads, the home chain and /matches open on the season chain. Measured as an
+| admin in German at 390 and 1920 px: the band stays inside the page, its
+| button and links do not wrap, nothing scrolls sideways, and the console and
+| every answer stay clean on the first load and after a round trip, with a
+| positive control.
+*/
+test('the live season band leads / and /matches at 390 and 1920 px as a German admin, whole and with a clean console', function () {
+    openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDay(), 'ends_at' => now()->addDays(30)]);
+    $rated = ChessGame::factory()->rated()->finished('1-0')->create(['ended_at' => now()->subMinutes(30)]);
+    ChessGame::factory()->finished('0-1')->create(['ended_at' => now()->subMinutes(20)]);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $shots = getenv('MEMPOOL_SHOTS');
+    $band = <<<'JS'
+        (test) => {
+            const band = document.querySelector(`[data-test=${test}]`);
+            if (! band) { return null; }
+            const box = band.getBoundingClientRect();
+            const wrapped = [...band.querySelectorAll('a, li')].filter((el) => el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().right > box.right + 1).map((el) => el.innerText);
+            const play = band.querySelector(`[data-test=${test}-play]`).getBoundingClientRect();
+            return { top: Math.round(box.top + scrollY), height: Math.round(box.height), right: Math.round(box.right), wrapped, playHeight: Math.round(play.height), lang: document.documentElement.lang };
+        }
+        JS;
+
+    foreach ([390, 1920] as $width) {
+        foreach ([['home', 'home-season-band'], ['matches.index', 'matches-season']] as [$route, $test]) {
+            $where = "{$route} de at {$width}";
+            $page = mempoolPage($admin, $width, 'de', [], $route);
+            $measured = $page->evaluate($band, $test);
+            [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
+            fwrite(STDERR, "[season band] {$where}: ".json_encode($measured)."\n");
+
+            expect($measured)->not->toBeNull("{$where}: no band")
+                ->and($measured['lang'])->toBe('de')
+                ->and($measured['wrapped'])->toBe([], "{$where}: wrapped or cut")
+                ->and($measured['right'])->toBeLessThanOrEqual($client, "{$where}: band past the page")
+                ->and($measured['playHeight'])->toBe(44, "{$where}: the button wraps")
+                ->and($measured['top'])->toBeLessThan(900, "{$where}: band below the first screen")
+                ->and($scroll)->toBeLessThanOrEqual($client, "{$where}: sideways scroll");
+
+            if ($route === 'home') {
+                expect($page->evaluate('() => document.querySelector("[data-test=home-mempool]").dataset.chain'))->toBe('season', $where)
+                    ->and($page->evaluate('() => document.querySelectorAll("[data-test=home-mempool] [data-test=chain-cube]").length'))->toBe(1, $where);
+            } else {
+                expect($page->evaluate('() => document.querySelector("[data-test=chain-season]")?.getAttribute("aria-current")'))->toBe('page', $where)
+                    ->and($page->evaluate('() => document.querySelector("[data-test=matches-table] a[href$=\'/games/'.$rated->id.'\']") !== null'))->toBeTrue($where);
+                // A round trip: the chain loads older blocks through Livewire.
+                expect($page->evaluate('async () => { const page = Livewire.all().find((c) => (c.name ?? "").includes("matches.index")); if (! page) { return "no component"; } await page.$wire.loadEarlier(); return "ok"; }'))->toBe('ok', $where);
+            }
+
+            if (is_string($shots) && $shots !== '') {
+                File::ensureDirectoryExists($shots);
+                $name = 'season-'.str_replace('.', '-', $route).'-'.$width;
+                $page->screenshot(false, $name);
+                File::move(base_path("tests/Browser/Screenshots/{$name}.png"), "{$shots}/{$name}.png");
+            }
+
+            expect($page->evaluate('() => window.__errors'))->toBe([], "{$where}: console")
+                ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$where}: responses");
+        }
+    }
+
+    // Positive control: the collector sees a thrown error on this page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("season band positive control"); }); }');
+    BrowserWait::until($page, '() => window.__errors.length >= 1', 5_000);
+    expect(implode(' ', $page->evaluate('() => window.__errors')))->toContain('season band positive control');
 });

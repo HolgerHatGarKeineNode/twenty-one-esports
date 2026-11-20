@@ -123,7 +123,7 @@ export function shellHeader() {
          * chain rail and the phone's sheet move their aria-current along (the rule of ShellNavigation::chain()).
          */
         followMatchesFilter(detail) {
-            const current = { mempool: detail?.chain === 'all' && detail?.game === 'all', casual: detail?.chain === 'casual' && detail?.game === 'all' };
+            const current = { mempool: detail?.chain === (detail?.home ?? 'all') && detail?.game === 'all', casual: detail?.chain === 'casual' && detail?.game === 'all' };
             for (const link of document.querySelectorAll('[data-chain-key]')) {
                 if (current[link.dataset.chainKey]) link.setAttribute('aria-current', 'page');
                 else link.removeAttribute('aria-current');

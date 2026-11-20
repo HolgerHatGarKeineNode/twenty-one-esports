@@ -9,6 +9,9 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\SeasonChain\Candidate;
+use App\Support\SeasonChain\Resolution;
+use Carbon\CarbonImmutable;
 
 /*
 | Helpers of the /matches tests (plan "Mempool-Streifen"): board games,
@@ -49,6 +52,16 @@ function mempoolSeries(array $attributes = []): SeriesMatch
     ]);
 }
 
+/** A whole block candidate, as SeasonChains stores it: the chain readout (HomeBoard::season(), the /matches season band) parses every row. */
+function mempoolCandidate(string $label): Candidate
+{
+    $winner = str_repeat('a', 64);
+    $loser = str_repeat('b', 64);
+
+    return new Candidate($label, 'chess:'.$label, 'chess', 'chess/blitz', CarbonImmutable::now(), Resolution::Confirmed, 41,
+        [$winner], [$loser], null, ['user:1', 'user:2'], [$winner, $loser], true, [$winner => 100, $loser => 100], [], []);
+}
+
 /**
  * An attestation of the season chain for a match: mined at `height`, or
  * rejected for `reason`.
@@ -57,7 +70,7 @@ function mempoolAttest(Season $season, string $source, int $id, ?int $height, ?s
 {
     return SeasonAttestation::query()->create([
         'season_id' => $season->id, 'source' => $source, 'source_id' => $id, 'label' => '#'.$id, 'game' => 'chess', 'mode' => 'blitz',
-        'ladder_address' => 'x', 'attested_at' => now(), 'candidate' => $candidate ? ['winners' => []] : null, 'height' => $height,
+        'ladder_address' => 'x', 'attested_at' => now(), 'candidate' => $candidate ? mempoolCandidate('#'.$id)->toArray() : null, 'height' => $height,
         'rule' => $reason === null ? null : 1, 'reason' => $reason, 'era' => $height === null ? null : 1,
         'reward_per_player' => 0, 'reward' => 0, 'event_id' => bin2hex(random_bytes(32)),
     ]);

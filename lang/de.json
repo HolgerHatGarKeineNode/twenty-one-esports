@@ -9473,5 +9473,10 @@
     "no game with a weight": "kein Spiel mit Gewicht",
     "The league defaults are filled in; the genesis message and the planned Block 0 are kept. Check them and save the draft.": "Die Liga-Standards sind eingetragen; die Genesis-Botschaft und der geplante Block 0 bleiben erhalten. Prüfe sie und speichere den Entwurf.",
     "Reset draft to the league defaults": "Entwurf auf die Liga-Standards zurücksetzen",
-    "The reset keeps the genesis message and the planned Block 0, and only fills the form: nothing is saved until you save the draft.": "Das Zurücksetzen behält die Genesis-Botschaft und den geplanten Block 0 und füllt nur das Formular: Gespeichert wird erst, wenn du den Entwurf speicherst."
+    "The reset keeps the genesis message and the planned Block 0, and only fills the form: nothing is saved until you save the draft.": "Das Zurücksetzen behält die Genesis-Botschaft und den geplanten Block 0 und füllt nur das Formular: Gespeichert wird erst, wenn du den Entwurf speicherst.",
+    "Block 0 mined on :when": "Block 0 geschürft am :when",
+    "Every fair rated win mines the next block of the season chain.": "Jeder faire gewertete Sieg schürft den nächsten Block der Season-Chain.",
+    "Play and mine": "Spielen und schürfen",
+    "The next fair rated win mines the next block.": "Der nächste faire gewertete Sieg schürft den nächsten Block.",
+    ":key: :sats sats per win": ":key: :sats Sats pro Sieg"
 }
