@@ -9504,5 +9504,7 @@
     "Mine no block": "Schürfen keinen Block",
     "Rules and change log": "Regeln und Änderungen",
     "Show all eras": "Alle Epochen zeigen",
-    "sats per winner now; each game halves by what it mined": "Sats je Sieger, jetzt; jedes Spiel halbiert nach dem, was es geschürft hat"
+    "sats per winner now; each game halves by what it mined": "Sats je Sieger, jetzt; jedes Spiel halbiert nach dem, was es geschürft hat",
+    ":count block mined, pending the season review|:count blocks mined, pending the season review": ":count Block geschürft, wartet auf die Saisonprüfung|:count Blöcke geschürft, warten auf die Saisonprüfung",
+    "The newest blocks, scrolls sideways": "Die neuesten Blöcke, seitlich scrollbar"
 }
