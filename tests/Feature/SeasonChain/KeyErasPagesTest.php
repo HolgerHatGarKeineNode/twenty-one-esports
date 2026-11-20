@@ -66,9 +66,10 @@ test('with chess in era 2 and the board games in era 1, /mining, the home card a
 
     expect($mining)->toContain('data-test="key-halving" data-key="chess" data-era="2"')
         ->toContain('data-test="key-halving" data-key="board-games" data-era="1"')
-        ->and($chess)->toContain($words['era2'])->toContain($words['blitz'].' '.$sats['chess-blitz'])->toContain($words['rapid'].' '.$sats['chess-rapid'])
+        // The pay cards (plan "mining-page-clarity" P3): one chip per mode with what a win pays now.
+        ->and($chess)->toContain($words['era2'])->toContain('Blitz '.$sats['chess-blitz'])->toContain('Rapid '.$sats['chess-rapid'])
         ->not->toContain($sats['era1-blitz'])
-        ->and($boards)->toContain($words['era1'])->toContain(ChainOverview::keyLabel('blockli/blitz').' '.$sats['era1-blitz'])->toContain(ChainOverview::keyLabel('blockli/rapid').' '.$sats['era1-rapid']);
+        ->and($boards)->toContain($words['era1'])->toContain('Blitz '.$sats['era1-blitz'])->toContain('Rapid '.$sats['era1-rapid']);
 
     // The pay table marks each game in its own row: chess blitz in era 2, Blockli blitz in era 1.
     preg_match_all('/data-test="pays-now" data-key="([^"]+)"\s*>\s*([\d.,]+)/', $mining, $now);

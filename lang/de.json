@@ -9498,5 +9498,11 @@
     "The daily limit is reached; the next block counts from midnight UTC.": "Das Tageslimit ist erreicht; der nächste Block zählt ab Mitternacht UTC.",
     ":low to :high": ":low bis :high",
     "no game mines right now": "gerade schürft kein Spiel",
-    "sats per winner now, by mode": "Sats je Sieger, jetzt, je Modus"
+    "sats per winner now, by mode": "Sats je Sieger, jetzt, je Modus",
+    "A win mines now, in sats per winner": "Ein Sieg schürft jetzt, in Sats je Sieger",
+    "Mine blocks now": "Schürfen jetzt Blöcke",
+    "Mine no block": "Schürfen keinen Block",
+    "Rules and change log": "Regeln und Änderungen",
+    "Show all eras": "Alle Epochen zeigen",
+    "sats per winner now; each game halves by what it mined": "Sats je Sieger, jetzt; jedes Spiel halbiert nach dem, was es geschürft hat"
 }

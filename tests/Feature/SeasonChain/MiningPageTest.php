@@ -187,7 +187,9 @@ test('in a live season the supply chart plots the mined sats per day with the fo
         ->assertSee('Forecast from the last 4 weeks')
         // Two days with blocks: 2 blocks for 40 000, then 1 more for a total of 60 000.
         ->assertSeeInOrder(['data-test="supply-table"', '>2</td>', '40,000', '40,000', '>1</td>', '20,000', '60,000', 'forecast</span>'], false)
-        ->assertSee('Era 2')
+        // Live (plan "mining-page-clarity" P3): the eras sit in a closed table, the bar chart of the halvings is gone.
+        ->assertSeeInOrder(['data-test="mining-eras"', 'Show all eras', 'data-test="mining-eras-scroll"'], false)
+        ->assertDontSee('Advanced statistics')
         ->assertSee('data-test="mining-payouts"', false)
         ->assertSee('the sats wait 90 days for a claim, then go to the reserve')
         ->assertSee('60,000 sats, 1 player', false)

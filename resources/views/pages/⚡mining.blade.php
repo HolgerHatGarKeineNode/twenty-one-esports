@@ -462,9 +462,93 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         @endforeach
     </section>
 
+    @if ($live)
+        @php
+            // What a win pays, one card per share key of ChainOverview::keys() (plan "mining-page-clarity" P3): the
+            // modes that mine, one chip per mode and figure (the sizes of a group together while they pay the same), read
+            // from the same rows as the eras table below and the stream slides.
+            $payCards = [];
+            foreach ($chain['keys'] as $shareKey => $key) {
+                if ($key['pot'] === 0) {
+                    continue;
+                }
+                $chips = [];
+                $covered = [];
+                foreach ($key['modes'] as $weightKey => $mode) {
+                    if (! ChainOverview::mines((string) $weightKey) || $mode['pays'] <= 0) {
+                        continue;
+                    }
+                    [$modeGame, $modeName] = explode('/', (string) $weightKey, 2);
+                    $covered[$modeGame] = GameNames::game($modeGame);
+                    $label = $modeGame === 'chess' ? \App\Support\Chess\ChessModes::short($modeName) : \Illuminate\Support\Str::ucfirst((string) preg_replace('/\s+\d+\+\d+$/', '', GameNames::mode($modeGame, $modeName)));
+                    $chips[$modeName.'|'.$mode['pays']] ??= ['label' => $label, 'pays' => (int) $mode['pays'], 'keys' => []];
+                    $chips[$modeName.'|'.$mode['pays']]['keys'][] = (string) $weightKey;
+                }
+                usort($chips, fn (array $a, array $b): int => $a['pays'] <=> $b['pays']);
+                $payCards[] = ['key' => $key, 'chips' => $chips, 'games' => array_values($covered)];
+            }
+            // Which games mine a block now and which do not (casual and own-copy games): the registry's list entries.
+            $mineGames = [[], []];
+            foreach ($registry->listed() as $listedSlug => $listedGame) {
+                $members = $registry->covered($listedSlug);
+                $minesNow = collect(array_keys($inForce->weights))->contains(fn (string $weightKey): bool => in_array(explode('/', $weightKey, 2)[0], $members, true)
+                    && ChainOverview::mines($weightKey) && ($chain['keys'][$inForce->shareKey(explode('/', $weightKey, 2)[0])]['era'] ?? null) !== null);
+                $mineGames[$minesNow ? 0 : 1][] = $registry->listedName($listedSlug);
+            }
+        @endphp
+        <section aria-labelledby="eras-h" class="flex min-w-0 flex-col gap-3" data-test="mining-keys">
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 id="eras-h" class="rv-h2">{{ __('What a win pays') }}</h2>
+                <span class="rv-m">{{ __('sats per winner now; each game halves by what it mined') }}</span>
+            </div>
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] lg:gap-4" data-test="key-halvings">
+                @foreach ($payCards as $card)
+                    @php($key = $card['key'])
+                    <article class="rv-card flex min-w-0 flex-col gap-3 p-4" data-test="key-halving" data-key="{{ $key['key'] }}" data-era="{{ $key['era'] ?? 'closed' }}">
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <h3 class="m-0 text-[16px] font-bold">{{ ChainOverview::gameLabel($key['key']) }}</h3>
+                            <span class="rv-tag is-btc" data-test="key-era">{{ $key['closed'] ? __('mined out') : __('Era :era of :eras', ['era' => $key['era'], 'eras' => $key['eras']]) }}</span>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span class="block h-1 w-full overflow-hidden rounded-[2px] bg-raised" aria-hidden="true">
+                                <span class="block h-full bg-btc" style="width: {{ $key['pot'] > 0 ? min(100, round(100 * $key['mined'] / $key['pot'], 2)) : 0 }}%"></span>
+                            </span>
+                            <span class="rv-m tabular-nums" data-test="key-mined">{{ __(':mined of :pot sats mined', ['mined' => $sats($key['mined']), 'pot' => $sats($key['pot'])]) }}</span>
+                        </div>
+                        @if ($card['chips'] !== [])
+                            <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('A win mines now, in sats per winner') }}" data-test="key-pays">
+                                @foreach ($card['chips'] as $chip)
+                                    <li class="inline-flex h-8 items-center gap-2 rounded-[4px] border border-line px-2.5 text-[13px] whitespace-nowrap" data-test="pay-chip" data-keys="{{ implode(',', $chip['keys']) }}" data-pays="{{ $chip['pays'] }}"
+                                        @if (count($chip['keys']) > 1) title="{{ collect($chip['keys'])->map(fn (string $chipKey): string => ChainOverview::keyLabel($chipKey))->implode(', ') }}" @endif>
+                                        <span class="text-ink-2">{{ $chip['label'] }}</span> <b class="font-display text-btc-hi tabular-nums">{{ $sats($chip['pays']) }}</b>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                        @if (count($card['games']) > 1)
+                            <span class="rv-m">{{ implode(', ', $card['games']) }}</span>
+                        @endif
+                        <span @class(['text-[13px] tabular-nums', 'text-btc-hi' => ! $key['closed'], 'text-ink-2' => $key['closed']]) data-test="key-next-halving">{{ ChainOverview::halvingLine($key) }}</span>
+                    </article>
+                @endforeach
+            </div>
+            <div class="flex flex-col gap-2 text-[13px]" data-test="mining-games">
+                @foreach ([[__('Mine blocks now'), $mineGames[0], true], [__('Mine no block'), $mineGames[1], false]] as [$caption, $names, $mines])
+                    @if ($names !== [])
+                        <div class="flex flex-wrap items-center gap-1.5" data-test="{{ $mines ? 'games-mine' : 'games-mine-not' }}">
+                            <span class="mr-1 text-ink-2">{{ $caption }}</span>
+                            @foreach ($names as $name)
+                                <span @class(['rv-tag', 'is-btc' => $mines])>{{ $name }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+                @endforeach
+            </div>
+    @endif
+
     {{-- Every game in its own halving (`season-chain-v2`): no era of the season, no date. Before the board saved a
          draft the pots would announce a server default, so the section waits for it (as the supply tile). --}}
-    @if ($live || $ended || PreSeason::potSats() !== null)
+    @if (! $live && ($ended || PreSeason::potSats() !== null))
     <section aria-labelledby="keys-h" class="rv-card flex flex-col p-4 lg:p-6" data-test="mining-keys">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 id="keys-h" class="rv-h2">{{ __('Halving per game') }}</h2>
@@ -474,31 +558,21 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     </section>
     @endif
 
-    @if ($hasChain)
-        <section aria-labelledby="supply-h" class="rv-card flex flex-col gap-3 p-4 lg:p-6" data-test="mining-supply">
-            <h2 id="supply-h" class="rv-h2">{{ __('Supply: mined and left') }}</h2>
-            <x-supply-chart :curve="$chain['curve']" :zone="$zone" :ended="$ended" />
-            @if ($chain['curve']['halvings'] !== [])
-                {{-- The halvings that happened, in words: the chart's hairlines carry no numbers on a phone. --}}
-                <ul class="m-0 flex list-none flex-col gap-1 p-0 text-xs text-ink-2" data-test="mining-halvings-done">
-                    @foreach ($chain['curve']['halvings'] as $halving)
-                        <li>{{ $halving['closed']
-                            ? __(':game mined its whole share on :when', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M')])
-                            : __(':game halved on :when and entered era :era', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M'), 'era' => $halving['entered']]) }}</li>
-                    @endforeach
-                </ul>
-            @endif
-            @if ($live)
-                <p class="m-0 text-xs text-ink-2">{{ __('At the rate of the last 4 weeks about :sats sats get mined by the season end (:percent %).', ['sats' => $sats($chain['estimate']['end_mined']), 'percent' => $chain['estimate']['end_mined_percent']]) }}</p>
-            @endif
-        </section>
+    @if ($hasChain && ! $live)
+        @include('partials.mining-supply')
     @endif
 
+    @if ($live)
+        {{-- The full era-by-mode table, closed: the cards above answer what a win pays now (plan P3). --}}
+        <details class="rv-adv min-w-0" data-test="mining-eras">
+            <summary><x-icon name="chevron-down" :size="16" />{{ __('Show all eras') }} <span class="rv-m font-normal max-sm:hidden">{{ __('sats per winner in each era of a game') }}</span></summary>
+    @else
     <section aria-labelledby="eras-h" class="rv-card flex min-w-0 flex-col p-0" data-test="mining-eras">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 p-4">
             <h2 id="eras-h" class="rv-h2">{{ __('What a win pays') }}</h2>
             <span class="rv-m">{{ $live || $ended ? __('sats per winner in each era of a game') : __('sats per winner in each era of a game, values from the Pre-Season draft') }}</span>
         </div>
+    @endif
         {{-- The table scrolls inside its card, never the page (it ran 970 px wide at 390, 2430 px in a 1342 px card at
              1440): the edge fades say there is more on that side (the chain viewport's pattern), the region takes the
              keyboard. --}}
@@ -564,7 +638,16 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <span>{{ __('Highlighted: the era each game stands in now.') }}</span>
             @endif
         </div>
+    @if ($live)
+        </details>
+        </section>
+    @else
     </section>
+    @endif
+
+    @if ($live && $chain['blocks'] > 0)
+        @include('partials.mining-supply')
+    @endif
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
         <div class="flex min-w-0 flex-col gap-4 lg:col-span-8 lg:gap-6">
@@ -614,10 +697,14 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             </section>
 
             {{-- Advanced statistics (canvas NEU (Scope)): the halvings as bars and the rules in force, from the same chain. --}}
-            <details class="rv-adv" open data-test="mining-rules">
-                <summary><x-icon name="chevron-down" :size="16" />{{ __('Advanced statistics') }} <span class="rv-m font-normal max-sm:hidden">{{ $payKey ? __('Halvings of the season, :game', ['game' => $shortKey($payKey)]) : __('Halvings of the season') }}</span></summary>
+            <details class="rv-adv" @unless ($live) open @endunless data-test="mining-rules">
+                @if ($live)
+                    <summary><x-icon name="chevron-down" :size="16" />{{ __('Rules and change log') }}</summary>
+                @else
+                    <summary><x-icon name="chevron-down" :size="16" />{{ __('Advanced statistics') }} <span class="rv-m font-normal max-sm:hidden">{{ $payKey ? __('Halvings of the season, :game', ['game' => $shortKey($payKey)]) : __('Halvings of the season') }}</span></summary>
+                @endif
                 <div class="flex flex-col gap-6 p-4">
-                    @if ($firstPay > 0)
+                    @if ($firstPay > 0 && ! $live)
                         <figure class="m-0 flex flex-col gap-2">
                             <figcaption class="text-[13px] text-ink-2">{{ __('Sats per win per era') }}</figcaption>
                             <div class="flex items-end gap-2 border-b border-edge" role="img" aria-label="{{ collect($chain['schedule'])->map(fn ($row) => __('Era :era', ['era' => $row['era']]).': '.$sats((int) ($row['rewards'][$payKey] ?? 0)))->implode(', ') }}">
@@ -636,7 +723,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         <thead><tr><th class="max-sm:whitespace-normal">{{ match (true) { $live => __('Rules in force now'), $ended => __('Rules at the season end'), default => __('Rules of the Pre-Season draft') } }}</th><th class="is-r">{{ __('Value') }}</th></tr></thead>
                         <tbody>
                             @foreach ([
-                                [__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => $shortKey((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')],
+                                // Live: the weights are in the pay cards and the eras table already (plan P3).
+                                ...($live ? [] : [[__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => $shortKey((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')]]),
                                 [$shareTerm, ChainOverview::sharesLine($inForce->shares)],
                                 [__('Blocks per player a day'), collect($inForce->daily)->map(fn ($daily, $game) => ChainOverview::gameLabel((string) $game).' '.$daily)->implode(', ')],
                                 [__('Blocks per pairing'), __(':day a day, :season in the season', ['day' => $inForce->pairLimitPerDay, 'season' => $inForce->pairLimitPerSeason])],
