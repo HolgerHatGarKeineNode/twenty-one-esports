@@ -9510,5 +9510,16 @@
     ":count block mined, pending the season review|:count blocks mined, pending the season review": ":count Block geschürft, vor der Saisonprüfung|:count Blöcke geschürft, vor der Saisonprüfung",
     "The newest blocks, scrolls sideways": "Die neuesten Blöcke, seitlich scrollbar",
     "Rules in force": "Geltende Regeln",
-    "How mining works, rules and change log": "So funktioniert Mining: Regeln und Änderungen"
+    "How mining works, rules and change log": "So funktioniert Mining: Regeln und Änderungen",
+    ":name cannot play rated yet: the account does not meet the profile standard for rated play.": ":name kann noch nicht gewertet spielen: Das Konto erfüllt den Profilstandard für gewertete Partien noch nicht.",
+    "Before you can play rated:": "Bevor du gewertet spielen kannst:",
+    "Casual play stays open.": "Casual bleibt offen.",
+    "Wait until :time: an account plays rated from :days days after its first login here.": "Warte bis :time: Ein Konto spielt ab :days Tagen nach seiner ersten Anmeldung hier gewertet.",
+    "Set a NIP-05 address, for example the league's own name under Settings › Nostr address.": "Lege eine NIP-05-Adresse fest, zum Beispiel den eigenen Namen der Liga unter Einstellungen › Nostr-Adresse.",
+    "Set a name and a profile picture in your Nostr client.": "Setze in deinem Nostr-Client einen Namen und ein Profilbild.",
+    "Below the profile standard": "Unter dem Profilstandard",
+    "Your profile for rated play": "Dein Profil für gewertete Partien",
+    "Set up your Nostr address": "Nostr-Adresse einrichten",
+    "Profile not ready for rated play": "Profil noch nicht bereit für gewertete Partien",
+    "What is missing": "Was noch fehlt"
 }

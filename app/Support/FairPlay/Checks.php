@@ -423,7 +423,7 @@ final class Checks
     }
 
     /**
-     * Barred, locked or linked now: what the admin should know before
+     * Barred, locked, linked or below the profile standard now: what the admin should know before
      * deciding, never a reason to list the player.
      *
      * @param  array{kind: string, until: CarbonImmutable|null, main: string|null}|null  $bar
@@ -441,6 +441,7 @@ final class Checks
         return [match ($bar['kind']) {
             'linked' => self::chip('linked', __('Linked to :name', ['name' => $name((string) $bar['main'])])),
             'barred' => self::chip('barred', __('Barred until :time', ['time' => $until])),
+            'standard' => self::chip('standard', __('Below the profile standard')),
             default => self::chip('locked', __('Locked until :time', ['time' => $until])),
         }];
     }

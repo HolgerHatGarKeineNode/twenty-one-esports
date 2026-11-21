@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
@@ -303,6 +304,35 @@ test('room: a captain who cannot accept a rated challenge because the two do not
         p57Shot($page, "p57-room-after-de-{$width}");
     }
 
+    $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
+});
+
+test('profile standard: a fresh account reads on its opponents page only the steps it still misses, with the link to the league\'s NIP-05 name, at 390 and 1440 in English and German', function () {
+    config(['esports.fair_play.profile_standard.enabled' => true]);
+    $fresh = User::factory()->create(['name' => 'newcomer', 'picture' => null, 'created_at' => now()->subDays(2)]);
+
+    foreach (['de', 'en'] as $locale) {
+        $page = p57Page($fresh, route('settings.opponents', [], false), 390, $locale);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=rated-standard]") !== null', 10_000);
+
+        $steps = $page->evaluate('() => [...document.querySelectorAll("[data-test=rated-standard] li")].map((li) => li.dataset.test)');
+        $text = $page->evaluate('() => document.querySelector("[data-test=rated-standard]").innerText.replace(/\s+/g, " ")');
+        fwrite(STDERR, "\n[standard] {$locale} steps: ".json_encode($steps).', text: '.json_encode($text, JSON_UNESCAPED_UNICODE)."\n");
+
+        expect($steps)->toBe(['rated-standard-known', 'rated-standard-nip05', 'rated-standard-profile'])
+            ->and($page->evaluate('() => document.querySelector("[data-test=rated-standard-link-nip05]").getAttribute("href")'))->toBe(route('settings.nip05'))
+            ->and(mb_strtolower($text))->not->toContain('gesicht')->not->toContain('face')
+            ->and($text)->toContain($locale === 'de' ? 'Profilbild' : 'profile picture');
+
+        foreach ([390, 1440] as $width) {
+            p57Measure($page, '[data-test=rated-standard]', $width, "{$locale} standard");
+            expect($page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=rated-standard]']))->toBe([]);
+            p57Shot($page, "standard-opponents-{$width}-{$locale}");
+        }
+    }
+
+    // Positive control: the collector sees a thrown error on this page.
     $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
 });

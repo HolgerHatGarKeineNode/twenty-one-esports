@@ -939,6 +939,16 @@ return [
         'forfeit_window_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_WINDOW_DAYS', 30),
         'forfeit_lock_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_LOCK_DAYS', 7),
 
+        // Profile standard of rated play (App\Support\FairPlay\ProfileStandard, user decision 2026-11-21): known to
+        // the league `known_days` days since the first login, a NIP-05 (checked, or the league's own name), a name
+        // and a picture. Whoever played rated in the live season before `since` (a date in the league's zone) is
+        // exempt; without a date the cut-off is now. Off by default; go-live flips the `enabled` default and deploys.
+        'profile_standard' => [
+            'enabled' => (bool) env('ESPORTS_PROFILE_STANDARD', false),
+            'known_days' => (int) env('ESPORTS_PROFILE_STANDARD_KNOWN_DAYS', 7),
+            'since' => env('ESPORTS_PROFILE_STANDARD_SINCE'),
+        ],
+
         'checks' => [
             // One opponent dominates: this share (percent) of a player's blocks won against one opponent. With the
             // season pair limit of 3, an honest player passes 60 % only while he has mined 5 blocks or fewer.

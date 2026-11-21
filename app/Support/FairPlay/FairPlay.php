@@ -33,19 +33,25 @@ use stdClass;
  *   of them within `fair_play.forfeit_window_days` days bar the player from
  *   rated play in every game for `fair_play.forfeit_lock_days` days from the
  *   last one. Only forfeits since the live season's Block 0 count.
+ * - a player **below the profile standard** (`standard`, {@see ProfileStandard},
+ *   behind `fair_play.profile_standard.enabled`): not known to the league for
+ *   `known_days` days, no NIP-05, or no name and picture; exempt who played
+ *   rated in the live season before the switch-on date. `until` is the day
+ *   the account becomes known when that is all it lacks, otherwise null. It
+ *   ranks last: any other kind carries its own reason and end.
  *
  * Only new rated play is refused: a match accepted before keeps its pinned
  * gate ("Nothing after the accept undoes the gate"). Results between two
  * accounts of one person are voided by the link itself and rate nothing
  * afterwards ({@see samePerson()}, RatingService).
  *
- * @phpstan-type Bar array{kind: 'linked'|'barred'|'locked'|'forfeits', until: CarbonImmutable|null, main: string|null}
+ * @phpstan-type Bar array{kind: 'linked'|'barred'|'locked'|'forfeits'|'standard', until: CarbonImmutable|null, main: string|null}
  */
 final class FairPlay
 {
     /**
      * The barred pubkeys among these, with why and until when (a link has
-     * no end).
+     * no end, nor has the profile standard while more than time is missing).
      *
      * @param  list<string>  $pubkeys
      * @return array<string, Bar>
@@ -75,6 +81,10 @@ final class FairPlay
 
         foreach (self::forfeitLocks(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $until) {
             $barred[$pubkey] = ['kind' => 'forfeits', 'until' => $until, 'main' => null];
+        }
+
+        foreach (ProfileStandard::below(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $below) {
+            $barred[$pubkey] = ['kind' => 'standard', 'until' => $below['until'], 'main' => null];
         }
 
         return $barred;
@@ -123,6 +133,17 @@ final class FairPlay
             return $own
                 ? __('An admin linked this account to your main account :main. Only the main account plays rated matches and wins prizes.', ['main' => $main])
                 : __(':name is a second account of another player and plays no rated matches.', ['name' => $name]);
+        }
+
+        // Below the profile standard: the owner reads only the steps still missing, another player only that.
+        if ($bar['kind'] === 'standard') {
+            if (! $own) {
+                return __(':name cannot play rated yet: the account does not meet the profile standard for rated play.', ['name' => $name]);
+            }
+
+            $steps = array_column(ProfileStandard::steps($viewer, ProfileStandard::missing($viewer)), 'text');
+
+            return implode(' ', [__('Before you can play rated:'), ...$steps, __('Casual play stays open.')]);
         }
 
         $until = LeagueTime::stamp($bar['until'] ?? now());
