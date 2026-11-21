@@ -265,6 +265,10 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     // Live: the top 5 miners and how many more mined (fix round 2026-11-21: ten rows ran 507 px at 390).
     $shownMiners = $hasChain ? ($live ? array_slice($chain['miners'], 0, 5) : $chain['miners']) : [];
     $moreMiners = $live && $hasChain ? max(0, (int) $chain['miner_count'] - count($shownMiners)) : 0;
+    // The rest folds below the shown rows (gate 2026-11-21): the phone shows the top 3, so it counts from 3.
+    $listedMiners = $hasChain ? $chain['miners'] : [];
+    $phoneMore = $live && $hasChain ? max(0, (int) $chain['miner_count'] - min(3, count($listedMiners))) : 0;
+    $beyondList = $live && $hasChain ? max(0, (int) $chain['miner_count'] - count($listedMiners)) : 0;
     $block0At = $live || $ended ? null : PreSeason::block0At();
     // Live: the state, not the season's name ("Pre-Season" read as "not started yet" after Block 0, plan P2).
     $stateTag = match (true) {
@@ -500,7 +504,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         <section aria-labelledby="eras-h" class="flex min-w-0 flex-col gap-2 lg:gap-3" data-test="mining-keys">
             <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h2 id="eras-h" class="rv-h2">{{ __('What a win pays') }}</h2>
-                <span class="rv-m">{{ __('sats per winner, now') }}</span>
+                {{-- Phone: the stat tile "A win pays" is hidden there (one tile row less), so its range stands in this caption. --}}
+                @if (($range ?? null) !== null)
+                    <span class="rv-m max-sm:hidden">{{ __('sats per winner, now') }}</span>
+                    <span class="rv-m sm:hidden" data-test="pay-range-phone">{{ __(':range sats per winner, now', ['range' => $range[0] === $range[1] ? $sats($range[0]) : __(':low to :high', ['low' => $sats($range[0]), 'high' => $sats($range[1])])]) }}</span>
+                @else
+                    <span class="rv-m">{{ __('sats per winner, now') }}</span>
+                @endif
             </div>
             {{-- One card, a column per share group (a row on a phone), not one card each: the groups are parts of one
                  answer. What each mode pays reads as a price board, label over figure, so no figure ever wraps or
@@ -803,12 +813,26 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         @endforelse
                     </div>
                     @if ($live)
-                        {{-- Phone: the top 3 (rows 4 and 5 hidden), so the rest counts from 3 there. --}}
-                        @if ($moreMiners + max(0, count($shownMiners) - 3) > 0)
-                            <p class="m-0 text-xs text-ink-2 sm:hidden" data-test="mining-miners-more-phone">{{ trans_choice('and :count more player mined|and :count more players mined', $moreMiners + max(0, count($shownMiners) - 3)) }}</p>
-                        @endif
-                        @if ($moreMiners > 0)
-                            <p class="m-0 text-xs text-ink-2 max-sm:hidden" data-test="mining-miners-more">{{ trans_choice('and :count more player mined|and :count more players mined', $moreMiners) }}</p>
+                        {{-- The rest of the list folds, nothing is dropped (gate 2026-11-21): the phone shows the top 3, wider
+                             screens the top 5, the disclosure the remaining listed miners, and a count for any beyond the list. --}}
+                        @if ($phoneMore > 0)
+                            <details @class(['rv-adv min-w-0 rounded-none border-0 bg-transparent', 'sm:hidden' => $moreMiners === 0]) data-test="mining-miners-rest">
+                                <summary class="text-xs"><x-icon name="chevron-down" :size="16" />
+                                    <span class="sm:hidden" data-test="mining-miners-more-phone">{{ trans_choice('and :count more player mined|and :count more players mined', $phoneMore) }}</span>
+                                    <span class="max-sm:hidden" data-test="mining-miners-more">{{ trans_choice('and :count more player mined|and :count more players mined', $moreMiners) }}</span>
+                                </summary>
+                                <div class="mt-2 flex flex-col">
+                                    @foreach (array_slice($listedMiners, 3, null, true) as $index => $miner)
+                                        <div @class(['grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline py-2 text-[13px] last:border-0', 'sm:hidden' => $index < 5]) data-test="mining-miner-rest">
+                                            <span class="text-ink-3">{{ $index + 1 }}</span><span class="truncate">{{ $miner['name'] }}</span>
+                                            <span class="text-right"><b class="tabular-nums">{{ $sats($miner['sats']) }}</b> <span class="text-xs text-ink-3">{{ trans_choice(':count block|:count blocks', $miner['blocks']) }}</span></span>
+                                        </div>
+                                    @endforeach
+                                    @if ($beyondList > 0)
+                                        <p class="m-0 py-2 text-xs text-ink-3">{{ trans_choice('and :count more player mined|and :count more players mined', $beyondList) }}</p>
+                                    @endif
+                                </div>
+                            </details>
                         @endif
                         <p class="m-0 text-xs text-ink-3">{{ __('Paid once, after the season review.') }}</p>
                     @else

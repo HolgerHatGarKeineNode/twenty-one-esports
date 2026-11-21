@@ -6,6 +6,8 @@
  * chart and the top miners.
  */
 
+use App\Models\Season;
+use App\Models\SeasonAttestation;
 use Illuminate\Support\Facades\Queue;
 
 require_once __DIR__.'/../../Support/key_eras.php';
@@ -56,4 +58,31 @@ test('live, how it works, the rules in force, the change log and the season revi
         ->and(str($reference)->after('</details>')->contains('data-test="mining-'))->toBeFalse()
         ->and($html)->toContain('data-test="mining-ladder-chess"')
         ->not->toContain('data-test="mining-ladder-link"');
+});
+
+test('live, the top miners beyond the shown rows fold into a disclosure instead of being dropped', function () {
+    // Chess alone, with room for seven blocks a day: seven winners, so the list runs past the five shown rows.
+    $season = keySeason(['parameters' => [...Season::factory()->make()->parameters, 'weights' => ['chess/blitz' => 1000, 'chess/rapid' => 1500], 'shares' => ['chess' => 100], 'daily' => ['chess' => 10]]]);
+    keyWins($season, ['chess/blitz', 'chess/rapid', 'chess/blitz', 'chess/rapid', 'chess/blitz', 'chess/rapid', 'chess/blitz']);
+    // Every win has its own winner, so each mined block is one miner.
+    $miners = SeasonAttestation::query()->whereNotNull('height')->count();
+
+    $html = (string) $this->get(route('mining'))->assertOk()->getContent();
+    $rest = str($html)->after('data-test="mining-miners-rest"')->before('</details>')->toString();
+
+    expect($miners)->toBeGreaterThan(5)
+        ->and(substr_count($html, 'data-test="mining-miner"'))->toBe(5)
+        ->and(substr_count($rest, 'data-test="mining-miner-rest"'))->toBe($miners - 3)
+        ->and($rest)->toContain('and '.($miners - 3).' more players mined')->toContain('and '.($miners - 5).' more player');
+});
+
+test('live, the phone keeps the win range in the pay caption while its stat tile is hidden there', function () {
+    keySeason();
+
+    $html = (string) $this->get(route('mining'))->assertOk()->getContent();
+    $range = trim((string) preg_replace('/\s+/', ' ', strip_tags(str($html)->after('data-test="stat-win-range"')->after('<b')->after('>')->before('</b>')->toString())));
+
+    expect($range)->not->toBe('')
+        ->and($html)->toMatch('/data-test="pay-range-phone">'.preg_quote($range, '/').' sats per winner, now</')
+        ->and($html)->toMatch('/class="[^"]*max-sm:hidden[^"]*"\s+data-test="stat-win-range"/');
 });
