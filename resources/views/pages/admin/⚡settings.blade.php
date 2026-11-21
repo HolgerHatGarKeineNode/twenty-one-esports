@@ -149,7 +149,7 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
                         @if ($shared !== null && $shared['first'])
                             <p id="{{ $shared['id'] }}" class="m-0 text-xs leading-normal text-ink-2 lg:col-span-2" data-test="settings-shared-help">{{ $definition['help'] }}</p>
                         @endif
-                        <div class="flex min-w-0 flex-col gap-1.5" wire:key="setting-{{ $field }}" data-test="setting-{{ $field }}">
+                        <div @class(['flex min-w-0 flex-col gap-1.5', 'lg:col-span-2' => $definition['type'] === 'text']) wire:key="setting-{{ $field }}" data-test="setting-{{ $field }}">
                             <label for="setting-{{ $field }}" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-ink">
                                 {{ $definition['label'] }}
                                 @if ($overridden)
@@ -172,6 +172,8 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
                                                  :aria-describedby="$shared['id'] ?? null" />
                                     <span class="text-[13px] text-ink-2" x-data x-text="$wire.form[@js($field)] === 'on' ? @js(LeagueSettings::display('on')) : @js(LeagueSettings::display('off'))">{{ LeagueSettings::display($this->form[$field] ?? 'off') }}</span>
                                 </span>
+                            @elseif ($definition['type'] === 'text')
+                                <textarea id="setting-{{ $field }}" wire:model="form.{{ $field }}" rows="10" maxlength="{{ $definition['max'] }}" class="{{ $input }} h-auto min-h-40 py-2 leading-normal"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)></textarea>
                             @elseif ($definition['type'] === 'time')
                                 <input id="setting-{{ $field }}" type="time" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
                             @else

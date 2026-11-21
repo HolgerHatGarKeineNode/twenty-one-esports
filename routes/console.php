@@ -20,6 +20,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Engagement\WeeklySlots;
+use App\Support\FairPlay\Impersonation;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Moderation\LeagueMuteList;
@@ -679,6 +680,14 @@ Artisan::command('esports:trust-run', function (TrustJob $job) {
 })->purpose('Compute and publish the trust ranks (anchored-trust-v1)');
 
 Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlapping();
+
+/*
+ * Account checks (plan "Profile standard and impersonation", P3): the profiles of accounts on members' league
+ * opponent lists for the impersonation check (D13), while that check is switched on, and the received zaps of the
+ * accounts admins look at, for the soft marks. Both read relays, neither ever holds a login.
+ */
+Schedule::command('fair-play:listed-profiles')->hourly()->withoutOverlapping()->onOneServer()->when(fn (): bool => Impersonation::enabled());
+Schedule::command('fair-play:received-zaps')->hourly()->withoutOverlapping()->onOneServer();
 
 /*
  * "Notify me at Block 0": once a planned Block 0 date is set (the chain

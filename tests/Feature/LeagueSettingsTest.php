@@ -45,8 +45,14 @@ test('every listed key has a default in the config that passes its own definitio
         // A game's automatic cups (user 2026-10-03) have no config path: their default is the env list's.
         $default = LeagueSettings::default($key);
 
-        expect($default)->not->toBeNull($key)
-            ->and(LeagueSettings::normalize($definition, is_array($default) ? implode(', ', $default) : (string) $default))->toBe($default, $key)
+        expect($default)->not->toBeNull($key);
+
+        // A text with no default (the account checks' scan prompt ships none, P3): empty, which the form saves as "default".
+        if ($definition['type'] === 'text' && $default === '') {
+            continue;
+        }
+
+        expect(LeagueSettings::normalize($definition, is_array($default) ? implode(', ', $default) : (string) $default))->toBe($default, $key)
             ->and(LeagueSettings::groups())->toHaveKey($definition['group']);
     }
 });

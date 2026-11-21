@@ -14,16 +14,17 @@ use Illuminate\Support\Carbon;
 /**
  * An account held from new rated play because its name reads like, or its
  * picture URL equals, that of another account the league knows
- * ({@see Impersonation}). Open until an admin decided: released, linked to
- * the matched account as the same person, or barred. The row stays, so who
- * decided what and when can always be read.
+ * ({@see Impersonation}), or held by an admin by hand from the account's
+ * check view (`manual`, no matched account). Open until an admin decided:
+ * released, linked to the matched account as the same person, or barred.
+ * The row stays, so who decided what and when can always be read.
  *
  * @property int $id
  * @property int|null $user_id
  * @property string $pubkey the held account
  * @property int|null $matched_user_id
- * @property string $matched_pubkey the account it looks like
- * @property string $matched `name` | `picture` | `both`
+ * @property string|null $matched_pubkey the account it looks like; null for a manual hold
+ * @property string $matched `name` | `picture` | `both` | `manual`
  * @property string|null $name_skeleton the held account's name as it reads, when the name matched
  * @property string|null $picture the held account's picture URL, when the picture matched
  * @property Carbon $detected_at
@@ -49,6 +50,9 @@ class ImpersonationHold extends Model
     public const PICTURE = 'picture';
 
     public const BOTH = 'both';
+
+    /** Held by an admin from the account's check view, for review: no matched account. */
+    public const MANUAL = 'manual';
 
     public const RELEASED = 'released';
 
@@ -88,6 +92,11 @@ class ImpersonationHold extends Model
     public function matchesPicture(): bool
     {
         return in_array($this->matched, [self::PICTURE, self::BOTH], true);
+    }
+
+    public function isManual(): bool
+    {
+        return $this->matched === self::MANUAL;
     }
 
     /**

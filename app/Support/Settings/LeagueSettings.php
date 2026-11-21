@@ -5,11 +5,14 @@ namespace App\Support\Settings;
 use App\Models\LeagueSettingChange;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\FairPlay\AccountCheckSettings;
 use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperEmotes;
+use App\Support\SeasonChain\LeagueKey;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * The league settings an admin changes on /admin/settings (P44): one
@@ -44,7 +47,15 @@ use Illuminate\Support\Facades\DB;
  * list, names the game); get() and default() return it where config() has
  * nothing.
  *
- * @phpstan-type Definition array{group: string, label: string, help: string, type: 'int'|'ints'|'time'|'weekday'|'toggle', min: int, max: int, count?: array{0: int, 1: int}, new_only: bool, board_only: bool, default?: string}
+ * The account checks (plan "Profile standard and impersonation", P3): the
+ * soft marks' thresholds and weights, the AI scan's model and prompt live
+ * here and nowhere in config/, because the repository is public. Their
+ * defaults (the definitions' `default`) are neutral; the values in force
+ * are in the database only, saved by an admin or seeded from a file
+ * outside the repository (AccountCheckSettings::seed()). `string` is one line (a model id), `text` many lines (the
+ * scan prompt).
+ *
+ * @phpstan-type Definition array{group: string, label: string, help: string, type: 'int'|'ints'|'time'|'weekday'|'toggle'|'string'|'text', min: int, max: int, count?: array{0: int, 1: int}, new_only: bool, board_only: bool, default?: int|string}
  */
 final class LeagueSettings
 {
@@ -66,6 +77,7 @@ final class LeagueSettings
             'casual_cups' => __('Casual cups'),
             'casual' => __('Casual 1v1'),
             'fair_play' => __('Fair play'),
+            'account_checks' => __('Account checks (admins only)'),
             'chess' => __('Chess queue'),
             'stream_bot' => __('Stream bot: free places'),
             'estimator' => __('Season estimator'),
@@ -138,6 +150,8 @@ final class LeagueSettings
             'esports.fair_play.forfeits' => self::int('fair_play', __('Left rated Hyperbitcoinization matches before a pause'), 1, 10, __('That many within the window bar a player from rated play in every game. Counts leaving and turns that ran out, since Block 0 of the live season. Applies at once.'), boardOnly: true),
             'esports.fair_play.forfeit_window_days' => self::int('fair_play', __('Window for left rated matches (days)'), 1, 365, __('Applies at once.'), boardOnly: true),
             'esports.fair_play.forfeit_lock_days' => self::int('fair_play', __('Pause from rated play after leaving (days)'), 1, 90, __('Counted from the last left match. Applies at once, to running pauses too.'), boardOnly: true),
+
+            ...AccountCheckSettings::definitions(),
 
             'esports.chess.pairing_limit_per_day.rated' => self::int('chess', __('Rated games per pairing and day'), 1, 20, __('The chess queue pairs the same two players for rated games at most this often per day (UTC). Applies at once.')),
 
@@ -266,14 +280,16 @@ final class LeagueSettings
     /**
      * Save changed values, one log row per key whose value in force changes;
      * all or nothing. `$values`: config path => the input, null = back to
-     * the default. The caller has checked the admin role.
+     * the default. The caller has checked the admin role. Without an admin
+     * the league itself writes (a console command, as the data migrations
+     * do: no user, the league's pubkey), and a board-only key is refused.
      *
      * @param  array<string, mixed>  $values
      * @return list<LeagueSettingChange>
      *
      * @throws LeagueSettingRefused with a message per refused key
      */
-    public static function save(User $admin, array $values): array
+    public static function save(?User $admin, array $values): array
     {
         $definitions = self::definitions();
         $errors = [];
@@ -286,6 +302,11 @@ final class LeagueSettings
                 $errors[$key] = __('This setting cannot be changed here.');
 
                 continue;
+            }
+
+            // An emptied text field is the default again (the account checks' scan prompt has an empty one).
+            if ($definition['type'] === 'text' && is_string($input) && trim($input) === '') {
+                $input = null;
             }
 
             $after = $input === null ? null : self::normalize($definition, $input);
@@ -303,7 +324,7 @@ final class LeagueSettings
                 continue;
             }
 
-            if (! self::mayChange($admin, $key)) {
+            if ($admin === null ? $definition['board_only'] : ! self::mayChange($admin, $key)) {
                 $errors[$key] = __('Only a board member on the public admin list can change this value.');
 
                 continue;
@@ -320,8 +341,8 @@ final class LeagueSettings
             'key' => $key,
             'before' => $changes[$key][0],
             'after' => $changes[$key][1],
-            'changed_by_id' => $admin->id,
-            'changed_by_pubkey' => $admin->pubkey,
+            'changed_by_id' => $admin?->id,
+            'changed_by_pubkey' => $admin->pubkey ?? LeagueKey::fromConfig()?->pubkey() ?? str_repeat('0', 64),
         ]), array_keys($changes)));
     }
 
@@ -341,6 +362,8 @@ final class LeagueSettings
             'time' => is_string($input) && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', trim($input)) === 1 ? trim($input) : null,
             'weekday' => is_string($input) && in_array(strtolower(trim($input)), self::WEEKDAYS, true) ? strtolower(trim($input)) : null,
             'toggle' => is_string($input) && in_array(strtolower(trim($input)), self::TOGGLE, true) ? strtolower(trim($input)) : null,
+            'string' => is_string($input) && preg_match('/^[a-z0-9][a-z0-9.\-]{1,63}$/', trim($input)) === 1 ? trim($input) : null,
+            'text' => self::textIn($input, $definition['max']),
         };
     }
 
@@ -357,6 +380,8 @@ final class LeagueSettings
             'time' => __('A time as HH:MM, from 00:00 to 23:59.'),
             'weekday' => __('A day of the week.'),
             'toggle' => __('On or off.'),
+            'string' => __('Lowercase letters, digits, dots and dashes, up to 64 characters.'),
+            'text' => __('Up to :max characters.', ['max' => $definition['max']]),
         };
     }
 
@@ -369,9 +394,22 @@ final class LeagueSettings
             is_string($value) && in_array($value, self::WEEKDAYS, true) => __(ucfirst($value)),
             $value === 'on' => __('On'),
             $value === 'off' => __('Off'),
+            is_string($value) => Str::limit(trim((string) preg_replace('/\s+/u', ' ', $value)), 120),
             is_scalar($value) => (string) $value,
             default => '–',
         };
+    }
+
+    /** Many lines, trimmed, line ends unified, without control characters but newline and tab; null when empty or too long. */
+    private static function textIn(mixed $input, int $max): ?string
+    {
+        if (! is_string($input) || ! mb_check_encoding($input, 'UTF-8')) {
+            return null;
+        }
+
+        $text = trim((string) preg_replace('/[\x{0}-\x{8}\x{B}-\x{1F}\x{7F}]/u', '', str_replace(["\r\n", "\r"], "\n", $input)));
+
+        return $text !== '' && mb_strlen($text) <= $max ? $text : null;
     }
 
     private static function intIn(mixed $input, int $min, int $max): ?int
@@ -422,6 +460,18 @@ final class LeagueSettings
     private static function int(string $group, string $label, int $min, int $max, string $help, bool $newOnly = false, bool $boardOnly = false): array
     {
         return ['group' => $group, 'label' => $label, 'help' => $help, 'type' => 'int', 'min' => $min, 'max' => $max, 'new_only' => $newOnly, 'board_only' => $boardOnly];
+    }
+
+    /**
+     * A key with no config path of its own: its `default` lives in the
+     * definition (the account checks, never in config/).
+     *
+     * @param  'int'|'string'|'text'  $type
+     * @return Definition
+     */
+    public static function owned(string $group, string $type, string $label, int $min, int $max, int|string $default, string $help): array
+    {
+        return ['group' => $group, 'label' => $label, 'help' => $help, 'type' => $type, 'min' => $min, 'max' => $max, 'new_only' => false, 'board_only' => false, 'default' => $default];
     }
 
     /**

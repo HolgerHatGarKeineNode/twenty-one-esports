@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ImpersonationHold;
+use App\Models\ListedProfile;
 use App\Models\TrustRank;
 use App\Models\User;
 use App\Support\FairPlay\Bars;
@@ -26,6 +27,11 @@ use Livewire\Component;
  * more. The decision: release, link as the same person (AccountLinks) or bar
  * (Bars, with a reason and an end). The form is deferred: picking a choice
  * and typing write nothing, only the confirm button decides. Admins only.
+ *
+ * P3: a hold an admin set by hand (`manual`) has no matched account, so it
+ * shows the held account alone and cannot be linked from here; an account
+ * that never logged in (a member lists it, D13) shows the profile the league
+ * read from the relays (ListedProfiles).
  */
 new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
@@ -57,23 +63,28 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
     /**
      * Both accounts as the decision needs them, held first.
      *
-     * @return array<string, array{pubkey: string, user: User|null, label: string, rank: int|null, nip05: string|null, nip05_checked: bool, league_name: string|null}>
+     * @return array<string, array{pubkey: string, user: User|null, listed: ListedProfile|null, label: string, rank: int|null, nip05: string|null, nip05_checked: bool, league_name: string|null}>
      */
     #[Computed]
     public function sides(): array
     {
         $hold = $this->current;
+        $pubkeys = array_values(array_filter([$hold->pubkey, $hold->matched_pubkey]));
         /** @var array<string, User> $users */
-        $users = User::query()->whereIn('pubkey', [$hold->pubkey, $hold->matched_pubkey])->get()->keyBy('pubkey')->all();
+        $users = User::query()->whereIn('pubkey', $pubkeys)->get()->keyBy('pubkey')->all();
+        /** @var array<string, ListedProfile> $listed */
+        $listed = ListedProfile::query()->whereIn('pubkey', $pubkeys)->get()->keyBy('pubkey')->all();
         /** @var array<string, int> $ranks */
-        $ranks = TrustRank::query()->whereIn('pubkey', [$hold->pubkey, $hold->matched_pubkey])->pluck('rank', 'pubkey')->all();
+        $ranks = TrustRank::query()->whereIn('pubkey', $pubkeys)->pluck('rank', 'pubkey')->all();
         $sides = [];
+        $shown = ['held' => [$hold->pubkey, __('Held account')]] + ($hold->matched_pubkey === null ? [] : ['matched' => [$hold->matched_pubkey, __('Looks like')]]);
 
-        foreach (['held' => [$hold->pubkey, __('Held account')], 'matched' => [$hold->matched_pubkey, __('Looks like')]] as $side => [$pubkey, $label]) {
+        foreach ($shown as $side => [$pubkey, $label]) {
             $user = $users[$pubkey] ?? null;
             $sides[$side] = [
                 'pubkey' => $pubkey,
                 'user' => $user,
+                'listed' => $user === null ? ($listed[$pubkey] ?? null) : null,
                 'label' => $label,
                 'rank' => isset($ranks[$pubkey]) ? (int) $ranks[$pubkey] : null,
                 'nip05' => $user?->nip05,
@@ -89,7 +100,7 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
     #[Computed]
     public function overlap(): array
     {
-        return Impersonation::overlap($this->current->pubkey, $this->current->matched_pubkey);
+        return $this->current->matched_pubkey === null ? ['shared' => [], 'mutual' => false] : Impersonation::overlap($this->current->pubkey, $this->current->matched_pubkey);
     }
 
     #[Computed]
@@ -154,11 +165,15 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
         unset($this->current);
     }
 
-    public function name(string $pubkey): string
+    public function name(?string $pubkey): string
     {
         foreach ($this->sides as $side) {
             if ($side['pubkey'] === $pubkey && $side['user'] !== null) {
                 return $side['user']->displayName();
+            }
+
+            if ($side['pubkey'] === $pubkey && $side['listed']?->name !== null) {
+                return (string) $side['listed']->name;
             }
         }
 
@@ -176,6 +191,7 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
     $matchedLabel = match ($hold->matched) {
         'both' => __('Name and picture'),
         'picture' => __('Picture'),
+        'manual' => __('Held for review'),
         default => __('Name'),
     };
     $choices = [
@@ -183,6 +199,9 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
         'link' => [__('Same person'), __('Link to :name as its main account. Results between them are voided.', ['name' => $this->name($hold->matched_pubkey)])],
         'bar' => [__('Bar from rated play'), __('With a reason and an end, like a bar by hand.')],
     ];
+    if ($hold->isManual()) {
+        unset($choices['link']);
+    }
 @endphp
 
 <x-admin.page active="checks" :title="__('Impersonation check')" :crumbs="[[__('Checks'), route('admin.checks')]]" :notice="$notice" notice-test="hold-notice" data-test="admin-hold">
@@ -211,12 +230,17 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <span id="side-{{ $key }}" class="text-xs text-ink-3">{{ $side['label'] }}</span>
                         <b class="text-[15px] [overflow-wrap:anywhere]" data-test="hold-side-name">{{ $user?->displayName() ?? $this->name($side['pubkey']) }}</b>
+                        @if ($user)
+                            <a href="{{ route('admin.checks.player', $user->pubkey) }}" class="inline-flex min-h-11 items-center text-xs text-btc underline" wire:navigate data-test="hold-side-check">{{ __('Account check') }}</a>
+                        @elseif ($side['listed'])
+                            <span class="text-xs text-ink-3" data-test="hold-side-listed">{{ __('Never logged in; profile read from the relays, on a member’s list since :time', ['time' => LeagueTime::stamp($side['listed']->first_seen_at)]) }}</span>
+                        @endif
                     </span>
                 </span>
                 <div class="flex flex-col">
                     @foreach ([
-                        [__('Name'), $user?->name ?? '–', 'name'],
-                        [__('Picture'), $user?->picture ?? '–', 'picture'],
+                        [__('Name'), $user?->name ?? $side['listed']?->name ?? '–', 'name'],
+                        [__('Picture'), $user?->picture ?? $side['listed']?->picture ?? '–', 'picture'],
                         [__('NIP-05'), $side['nip05'] === null ? '–' : $side['nip05'].' · '.($side['nip05_checked'] ? __('checked') : __('not checked')), 'nip05'],
                         [__('League name'), $side['league_name'] ?? '–', 'league-name'],
                         [__('First login'), $user?->created_at ? LeagueTime::stamp($user->created_at) : '–', 'first-login'],
@@ -233,6 +257,7 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
         @endforeach
     </div>
 
+    @if ($hold->matched_pubkey !== null)
     <x-admin.panel :title="__('Opponent lists')" :meta="$overlap['mutual'] ? __('they list each other') : __('they do not list each other')" data-test="hold-overlap">
         <p class="m-0 text-[13px] text-ink-2" data-test="hold-shared">{{ trans_choice(':count opponent on both lists|:count opponents on both lists', count($overlap['shared'])) }}</p>
         @if ($overlap['shared'] !== [])
@@ -243,19 +268,20 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
             </span>
         @endif
     </x-admin.panel>
+    @endif
 
     <section aria-labelledby="dec-h" class="flex flex-col gap-4 rounded border border-hairline bg-card px-4 py-5 lg:px-6" data-test="hold-decision">
         <h2 id="dec-h" class="rv-h3">{{ __('Decision') }}</h2>
         @if (! $open)
             <p class="m-0 text-[13px] text-ink-2" data-test="hold-decided" data-decision="{{ $hold->decision }}">{{ __(':decision by :name on :time: :note', [
-                'decision' => $choices[match ($hold->decision) { 'released' => 'release', 'linked' => 'link', default => 'bar' }][0],
+                'decision' => match ($hold->decision) { 'released' => __('Release'), 'linked' => __('Same person'), default => __('Bar from rated play') },
                 'name' => $hold->decidedBy?->displayName() ?? $this->name((string) $hold->decided_by_pubkey),
                 'time' => LeagueTime::stamp($hold->decided_at ?? now()),
                 'note' => $hold->note ?? '–',
             ]) }}</p>
         @else
             <form wire:submit="decide" wire:confirm="{{ __('Decide this hold now?') }}" class="flex flex-col gap-4" data-test="hold-form">
-                <div role="radiogroup" aria-labelledby="dec-h" class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div role="radiogroup" aria-labelledby="dec-h" @class(['grid grid-cols-1 gap-3', 'lg:grid-cols-3' => count($choices) === 3, 'lg:grid-cols-2' => count($choices) === 2])>
                     @foreach ($choices as $value => [$title, $text])
                         <button type="button" role="radio" wire:key="choice-{{ $value }}" wire:click="$set('decision', '{{ $value }}')" aria-checked="{{ $decision === $value ? 'true' : 'false' }}" class="rv-opt h-auto items-start py-3" data-test="hold-choice-{{ $value }}">
                             <i class="mt-0.5"></i><span class="flex min-w-0 flex-col gap-0.5"><b class="text-[13px]">{{ $title }}</b><span class="text-xs leading-normal text-ink-2">{{ $text }}</span></span>

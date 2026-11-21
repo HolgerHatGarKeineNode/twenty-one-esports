@@ -42,6 +42,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::livewire('checks', 'pages::admin.checks')->name('checks');
     // One impersonation hold: both profiles side by side and the decision (release, same person, bar).
     Route::livewire('checks/holds/{hold}', 'pages::admin.impersonation-hold')->whereNumber('hold')->name('checks.hold');
+    // One account's check (P3): profile, hard and soft marks, holds, the AI scan on demand and the quick actions.
+    Route::livewire('checks/players/{pubkey}', 'pages::admin.check-player')->where('pubkey', '[0-9a-f]{64}')->name('checks.player');
 
     // Site-wide mutes and bans of a Nostr key: the list with Undo, and the moderation menu on every chat message.
     Route::livewire('moderation', 'pages::admin.moderation')->name('moderation');

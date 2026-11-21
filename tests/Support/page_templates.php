@@ -11,6 +11,8 @@
 return [
     'admin/⚡admins.blade.php' => ['T-Admin-List', 'AdminAdmins › AdminAdmins'],
     'admin/⚡blockfill.blade.php' => ['T-Admin-List', 'AdminBlockfill › AdminBlockfill'],
+    // One account's check (plan "Profile standard and impersonation", P3, 2026-11-21): marks, holds, the AI scan and the quick actions of one account; no canvas board yet (NEU, Scope).
+    'admin/⚡check-player.blade.php' => ['T-Admin-Case (NEU, Scope)', 'AdminFairPlay › AdminFairPlay'],
     'admin/⚡checks.blade.php' => ['T-Admin-List', 'AdminChecks › AdminChecks'],
     'admin/⚡dispute.blade.php' => ['T-Admin-Case', 'AdminDispute › AdminDispute'],
     'admin/⚡disputes.blade.php' => ['T-Admin-List', 'AdminDisputes › AdminDisputes'],

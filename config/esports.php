@@ -2028,6 +2028,8 @@ return [
         'prices_usd_per_mtok' => [
             'claude-haiku-5-5' => ['input' => 0.10, 'cache_read' => 0.01, 'cache_write' => 0.125, 'output' => 0.50],
             'claude-sonnet-5-5' => ['input' => 2.0, 'cache_read' => 0.10, 'cache_write' => 2.50, 'output' => 10.0],
+            // The admins' account scan (App\Support\FairPlay\AccountScans) defaults to Opus 5.5 (claude-api skill, read 2026-11-21).
+            'claude-opus-5-5' => ['input' => 4.0, 'cache_read' => 0.20, 'cache_write' => 5.0, 'output' => 20.0],
         ],
         'canon' => [
             'min' => 50,

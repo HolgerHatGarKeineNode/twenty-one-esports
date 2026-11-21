@@ -480,3 +480,17 @@ test('the page reads in German', function () {
         ->assertDontSee('Mutual wins')
         ->assertDontSee('Player page');
 });
+
+test('P3: each row shows the player\'s soft marks to the admin and leads to the account check view and the scan', function () {
+    $season = ckSeason();
+    seedAccountChecks();
+    $ada = ckClean('Ada');
+    ckWin($season, $ada, ckPlayer('Xaver'));
+
+    $this->actingAs(ckAdmin())->get(route('admin.checks', ['all' => 1]))->assertOk()
+        ->assertSee('data-test="checks-soft"', false)
+        ->assertSee('data-mark="zaps"', false)
+        ->assertSee('Zaps not read yet')
+        ->assertSee(route('admin.checks.player', $ada->pubkey))
+        ->assertSee('data-test="checks-scan"', false);
+});

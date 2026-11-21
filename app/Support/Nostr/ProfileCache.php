@@ -147,6 +147,7 @@ final class ProfileCache
         }
 
         $previousName = $user->displayName();
+        $previousProfile = [$user->name, $user->picture];
         $nip05 = self::nip05($metadata['nip05'] ?? null);
         $nip05Changed = $nip05 !== $user->nip05;
         $lud16 = self::lud16($metadata['lud16'] ?? null);
@@ -175,6 +176,8 @@ final class ProfileCache
         // A new name or picture is compared with the other accounts (impersonation hold; nothing runs while it is off).
         // A failing check never aborts the profile refresh (or a batch of them): it is reported, the next change checks again.
         if ($user->wasChanged(['name', 'picture'])) {
+            // First since when it carries them (a rename counts from now), then the check that reads it.
+            rescue(fn () => Impersonation::noteProfile($user, ...$previousProfile, firstProfile: $cachedAt === null));
             rescue(fn () => Impersonation::check($user));
         }
 
@@ -214,9 +217,13 @@ final class ProfileCache
     }
 
     /**
+     * The shown name of a kind-0 content: `display_name`, else `name`, one
+     * line, cut to 100 characters. Public for the listed profiles
+     * (App\Support\FairPlay\ListedProfiles), which store names the same way.
+     *
      * @param  array<mixed>  $metadata
      */
-    private static function name(array $metadata): ?string
+    public static function name(array $metadata): ?string
     {
         foreach (['display_name', 'name'] as $field) {
             // One line: no line or paragraph separators, no format characters but the joiners emoji need.
@@ -250,7 +257,7 @@ final class ProfileCache
      * Only https, only well-formed: a picture or banner is loaded straight
      * from its host by every visitor, and a website is a link.
      */
-    private static function httpsUrl(mixed $url): ?string
+    public static function httpsUrl(mixed $url): ?string
     {
         if (! is_string($url)) {
             return null;

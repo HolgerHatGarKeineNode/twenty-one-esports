@@ -1,10 +1,14 @@
 <?php
 
 use App\Models\ImpersonationHold;
+use App\Models\ListedProfile;
 use App\Models\Season;
 use App\Models\User;
+use App\Support\FairPlay\AccountScans;
 use App\Support\FairPlay\Checks;
+use App\Support\FairPlay\FairPlayRefused;
 use App\Support\FairPlay\Impersonation;
+use App\Support\FairPlay\SoftMarks;
 use App\Support\Formats;
 use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
@@ -27,6 +31,11 @@ use Livewire\Component;
  * On top, the open impersonation holds (App\Support\FairPlay\Impersonation):
  * each leads to its decision page with both profiles side by side. Shown
  * while the hold is switched on, or while a hold is still open.
+ *
+ * P3: every row carries the account's soft marks (SoftMarks, admins only)
+ * and leads to its check view; "Scan" starts the AI scan there, after a
+ * confirm, since each scan costs money. A scan is a hint and decides
+ * nothing.
  */
 new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
@@ -78,9 +87,54 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
         return User::query()->whereIn('pubkey', $pubkeys)->get(['id', 'pubkey', 'npub', 'name'])->mapWithKeys(fn (User $user): array => [$user->pubkey => $user->displayName()])->all();
     }
 
-    public function holdName(string $pubkey): string
+    public function holdName(?string $pubkey): string
     {
-        return $this->holdNames[$pubkey] ?? (NostrKeys::isHexPubkey($pubkey) ? Str::limit(NostrKeys::hexToNpub($pubkey), 16, '…') : '–');
+        if ($pubkey === null) {
+            return '–';
+        }
+
+        return $this->holdNames[$pubkey] ?? $this->listedNames[$pubkey] ?? (NostrKeys::isHexPubkey($pubkey) ? Str::limit(NostrKeys::hexToNpub($pubkey), 16, '…') : '–');
+    }
+
+    /** @return array<string, string> pubkey => the relay profile's name of a matched account that never logged in */
+    #[Computed]
+    public function listedNames(): array
+    {
+        $pubkeys = $this->holds->pluck('matched_pubkey')->filter()->unique()->values()->all();
+
+        return ListedProfile::query()->whereIn('pubkey', $pubkeys)->whereNotNull('name')->pluck('name', 'pubkey')->map(fn (mixed $name): string => (string) $name)->all();
+    }
+
+    /**
+     * The soft marks of the listed players, pubkey => marks.
+     *
+     * @return array<string, list<array{key: string, label: string, tone: 'good'|'warn'|'none', weight: int}>>
+     */
+    #[Computed]
+    public function softMarks(): array
+    {
+        $pubkeys = array_column($this->checks['rows'], 'pubkey');
+
+        return SoftMarks::for(User::query()->whereIn('pubkey', $pubkeys)->pluck('id', 'pubkey')->map(fn (mixed $id): int => (int) $id)->all());
+    }
+
+    /** Start the AI scan of one listed player and open its check view. */
+    public function scan(string $pubkey): void
+    {
+        Gate::authorize('admin');
+        $admin = auth()->user();
+        abort_unless($admin instanceof User, 403);
+        $player = User::query()->where('pubkey', $pubkey)->firstOrFail();
+
+        try {
+            app(AccountScans::class)->scan($admin, $player);
+        } catch (FairPlayRefused $refused) {
+            $this->addError('scan', $refused->getMessage());
+
+            return;
+        }
+
+        $this->redirectRoute('admin.checks.player', ['pubkey' => $player->pubkey], navigate: true);
     }
 
     public function toggleAll(): void
@@ -107,9 +161,10 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
                 <div class="flex flex-col gap-2 border-t border-hairline py-3 first:border-t-0 lg:flex-row lg:items-center lg:justify-between lg:gap-4" wire:key="hold-{{ $hold->id }}" data-test="checks-hold" data-hold="{{ $hold->id }}">
                     <span class="flex min-w-0 flex-col gap-0.5 text-[13px]">
                         <b class="[overflow-wrap:anywhere]" data-test="checks-hold-name">{{ $this->holdName($hold->pubkey) }}</b>
-                        <span class="text-xs text-ink-2 [overflow-wrap:anywhere]">{{ __('looks like :name', ['name' => $this->holdName($hold->matched_pubkey)]) }} · {{ match ($hold->matched) { 'both' => __('name and picture'), 'picture' => __('picture'), default => __('name') } }} · {{ LeagueTime::stamp($hold->detected_at) }}</span>
+                        <span class="text-xs text-ink-2 [overflow-wrap:anywhere]">{{ $hold->isManual() ? __('held for review') : __('looks like :name', ['name' => $this->holdName($hold->matched_pubkey)]) }}@unless ($hold->isManual()) · {{ match ($hold->matched) { 'both' => __('name and picture'), 'picture' => __('picture'), default => __('name') } }}@endunless · {{ LeagueTime::stamp($hold->detected_at) }}</span>
                     </span>
                     <span class="flex shrink-0 flex-wrap gap-2">
+                        <x-button variant="secondary" :href="route('admin.checks.player', $hold->pubkey)" data-test="checks-hold-check">{{ __('Account check') }}</x-button>
                         <x-button variant="secondary" :href="route('admin.checks.hold', $hold)" data-test="checks-hold-decide">{{ __('Decide…') }}</x-button>
                     </span>
                 </div>
@@ -118,6 +173,8 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
             @endforelse
         </x-admin.panel>
     @endif
+
+    @error('scan')<p class="m-0 text-[13px] text-loss" role="alert" data-test="checks-scan-error">{{ $message }}</p>@enderror
 
     <x-admin.panel :title="$all ? __('All players of the season') : __('Conspicuous players')" :meta="__('most chips first')" flush data-test="checks-list">
         @if ($this->season !== null && $checks['players'] > 0)
@@ -145,6 +202,8 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
                                 <span class="text-xs text-ink-2" data-test="checks-mined">{{ trans_choice(':count block|:count blocks', $row['blocks']) }} · <span class="rv-num">{{ Formats::number($row['sats']) }}</span> sat</span>
                             </span>
                             <span class="flex shrink-0 flex-wrap gap-2">
+                                <x-button variant="secondary" :href="route('admin.checks.player', $row['pubkey'])" data-test="checks-account">{{ __('Account check') }}</x-button>
+                                <x-button variant="secondary" icon="eye" wire:click="scan('{{ $row['pubkey'] }}')" wire:confirm="{{ __('Start an AI scan of :name? It costs money and only gives a hint.', ['name' => $row['name']]) }}" data-test="checks-scan">{{ __('Scan') }}</x-button>
                                 @if ($row['npub'] !== null)
                                     <x-button variant="secondary" :href="route('players.show', $row['npub'])" data-test="checks-player-page">{{ __('Player page') }}</x-button>
                                     <x-button variant="danger" icon="shield-check" :href="route('admin.fair-play', ['bar' => $row['npub']]).'#fair-play-bar'" data-test="checks-bar">{{ __('Bar…') }}</x-button>
@@ -158,6 +217,13 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
                                 @endforeach
                                 @foreach ($row['states'] as $chip)
                                     <span class="rv-tag is-bad h-auto min-h-5 py-0.5 whitespace-normal" data-test="checks-state" data-state="{{ $chip['key'] }}">{{ $chip['label'] }}</span>
+                                @endforeach
+                            </span>
+                        @endif
+                        @if (($this->softMarks[$row['pubkey']] ?? []) !== [])
+                            <span class="flex flex-wrap gap-1.5" data-test="checks-soft">
+                                @foreach ($this->softMarks[$row['pubkey']] as $mark)
+                                    <x-admin.soft-mark :mark="$mark" />
                                 @endforeach
                             </span>
                         @endif

@@ -26,6 +26,7 @@ use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\Support\HyperOn;
 use Tests\Support\NineMensMorrisOn;
@@ -167,6 +168,87 @@ test('a name in CJK letters gives a valid UTF-8 key and is held like any other, 
     $this->assertAuthenticated();
 });
 
+test('a name NFKC spells out is compared up to the longest key and stored in full (10 x U+FDFA = 140 letters), and past it (100 x U+FDFA = 1400 letters) the name is not compared while the picture still is', function () {
+    expect(Schema::getColumnType('impersonation_holds', 'name_skeleton'))->toBe('text')
+        ->and(Schema::getColumnType('listed_profiles', 'name_key'))->toBe('text');
+
+    $original = ihOriginal(['name' => str_repeat("\u{FDFA}", 10), 'picture' => null]);
+    $fresh = ihFresh(['name' => str_repeat("\u{FDFA}", 10)]);
+    $hold = ImpersonationHold::query()->sole();
+    expect($hold->only(['pubkey', 'matched_pubkey', 'matched']))->toBe(['pubkey' => $fresh->pubkey, 'matched_pubkey' => $original->pubkey, 'matched' => 'name'])
+        ->and(mb_strlen((string) $hold->name_skeleton))->toBe(140);
+
+    ImpersonationHold::query()->delete();
+    $long = ihOriginal(['name' => str_repeat("\u{FDFA}", 100), 'picture' => 'https://example.com/long.png']);
+    $copy = ihFresh(['name' => str_repeat("\u{FDFA}", 100), 'picture' => 'https://example.com/long.png']);
+
+    expect($copy->name)->toBe(str_repeat("\u{FDFA}", 100))
+        ->and(ImpersonationHold::query()->sole()->only(['pubkey', 'matched_pubkey', 'matched', 'name_skeleton']))
+        ->toBe(['pubkey' => $copy->pubkey, 'matched_pubkey' => $long->pubkey, 'matched' => 'picture', 'name_skeleton' => null]);
+});
+
+test('Q1: an old account that renames to the name of an account that had it first is held, and the original\'s own later refresh never holds it', function () {
+    $originalSigner = new TestSigner;
+    $original = ihOriginal(['pubkey' => $originalSigner->pubkey, 'picture' => null]);
+    $oldSigner = new TestSigner;
+    $old = User::factory()->withPubkey($oldSigner->pubkey)->create(['name' => null, 'picture' => null, 'created_at' => now()->subYears(2)]);
+
+    // Its first name counts from the time the league knows it: two years, older than the original.
+    ProfileCache::acceptEvents([ihProfile($oldSigner, ['name' => 'Bob'], now()->getTimestamp() - 60)]);
+    expect(ImpersonationHold::query()->count())->toBe(0)
+        ->and(DB::table('profile_values_seen')->where('pubkey', $old->pubkey)->sole()->first_seen_at)->toBe($old->created_at->toDateTimeString());
+
+    $this->travel(1)->days();
+    ProfileCache::acceptEvents([ihProfile($oldSigner, ['name' => 'Odell'])]);
+
+    expect(ImpersonationHold::query()->open()->sole()->only(['pubkey', 'matched_pubkey', 'matched']))
+        ->toBe(['pubkey' => $old->pubkey, 'matched_pubkey' => $original->pubkey, 'matched' => 'name']);
+
+    // The original refreshes its profile (a picture, then the same name written anew): it is never held against the renamed account.
+    $this->travel(1)->days();
+    ProfileCache::acceptEvents([ihProfile($originalSigner, ['name' => 'Odell', 'picture' => 'https://example.com/odell.png'])]);
+    $this->travel(1)->minute();
+    ProfileCache::acceptEvents([ihProfile($originalSigner, ['name' => 'ODELL', 'picture' => 'https://example.com/odell.png'])]);
+
+    expect(ImpersonationHold::query()->where('pubkey', $original->pubkey)->count())->toBe(0)
+        ->and(ImpersonationHold::query()->count())->toBe(1);
+});
+
+test('Q1: an old account whose first stored profile had no usable name (none, or too short) carries a name it takes later from then, not from its registration: it is held, and the original never is', function (array $firstProfile) {
+    $originalSigner = new TestSigner;
+    $original = ihOriginal(['pubkey' => $originalSigner->pubkey, 'picture' => null]);
+    $sleeperSigner = new TestSigner;
+    $sleeper = User::factory()->withPubkey($sleeperSigner->pubkey)->create(['name' => null, 'picture' => null, 'created_at' => now()->subYears(2)]);
+    ProfileCache::acceptEvents([ihProfile($sleeperSigner, $firstProfile, now()->getTimestamp() - 60)]);
+
+    $this->travel(1)->days();
+    ProfileCache::acceptEvents([ihProfile($sleeperSigner, ['name' => 'Odell'])]);
+
+    expect(ImpersonationHold::query()->open()->sole()->only(['pubkey', 'matched_pubkey']))->toBe(['pubkey' => $sleeper->pubkey, 'matched_pubkey' => $original->pubkey])
+        ->and(DB::table('profile_values_seen')->where('pubkey', $sleeper->pubkey)->where('kind', 'name')->sole()->first_seen_at)->toBe(now()->toDateTimeString());
+
+    $this->travel(1)->days();
+    ProfileCache::acceptEvents([ihProfile($originalSigner, ['name' => 'Odell', 'picture' => 'https://example.com/odell.png'])]);
+    expect(ImpersonationHold::query()->where('pubkey', $original->pubkey)->count())->toBe(0);
+})->with([
+    'no name' => [['about' => 'just here']],
+    'too short' => [['name' => 'xy']],
+]);
+
+test('Q1: an old account that takes over the picture of an account that showed it first is held for the picture; a Verein member that renames is not (D12)', function () {
+    $original = ihOriginal(['picture' => 'https://example.com/odell.png']);
+    $oldSigner = new TestSigner;
+    $old = User::factory()->withPubkey($oldSigner->pubkey)->create(['name' => 'Bob', 'picture' => 'https://example.com/bob.png', 'created_at' => now()->subYears(2)]);
+    $memberSigner = new TestSigner;
+    User::factory()->withPubkey($memberSigner->pubkey)->create(['name' => 'Carol', 'picture' => null, 'is_member' => true, 'created_at' => now()->subYears(2)]);
+
+    ProfileCache::acceptEvents([ihProfile($oldSigner, ['name' => 'Bob', 'picture' => 'https://example.com/odell.png'])]);
+    ProfileCache::acceptEvents([ihProfile($memberSigner, ['name' => 'Odell'])]);
+
+    expect(ImpersonationHold::query()->open()->get()->map->only(['pubkey', 'matched_pubkey', 'matched'])->all())
+        ->toBe([['pubkey' => $old->pubkey, 'matched_pubkey' => $original->pubkey, 'matched' => 'picture']]);
+});
+
 test('no hold for the account itself, an account linked to it, a name shorter than three letters as it reads, or a different name', function (Closure $arrange) {
     $original = ihOriginal(['picture' => null]);
     $arrange($original);
@@ -205,17 +287,17 @@ test('only the account without precedence is held: the original\'s own profile c
         ->and(ImpersonationHold::query()->pluck('pubkey')->all())->toEqualCanonicalizing([$fresh->pubkey, $squatter->pubkey]);
 });
 
-test('an account on a member\'s league opponent list has precedence over an older account no member lists', function () {
+test('D12: an account on a member\'s league opponent list has no precedence of its own: the older account wins, and only Verein membership beats age', function () {
     openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDays(10), 'ends_at' => now()->addDays(60)], ladders: false);
     $memberKey = new TestSigner;
-    $member = User::factory()->withPubkey($memberKey->pubkey)->create(['name' => 'Member', 'is_member' => true, 'created_at' => now()->subYears(2)]);
+    User::factory()->withPubkey($memberKey->pubkey)->create(['name' => 'Member', 'is_member' => true, 'created_at' => now()->subYears(2)]);
     $listed = User::factory()->create(['name' => 'Grace', 'picture' => null, 'created_at' => now()]);
     $older = User::factory()->create(['name' => 'Grace', 'picture' => null, 'created_at' => now()->subYear()]);
     $league = (new TestSigner(config('esports.league.nsec')))->pubkey;
     NostrEvent::fromSigned(SignedEvent::fromInput($memberKey->sign(30000, [['d', 'esports/'.$league], ['p', $listed->pubkey]])));
 
-    expect(Impersonation::check($listed))->toBe([])
-        ->and(collect(Impersonation::check($older))->map->matched_pubkey->all())->toBe([$listed->pubkey]);
+    expect(Impersonation::check($older))->toBe([])
+        ->and(collect(Impersonation::check($listed))->map->matched_pubkey->all())->toBe([$older->pubkey]);
 });
 
 test('switch off: a look-alike profile and a login write no hold, an open hold bars nobody, and none of it reads the holds or scans the accounts', function () {
@@ -418,6 +500,27 @@ test('a released match is not raised again for the same name and picture, but a 
 
     ProfileCache::acceptEvents([ihProfile($signer, ['name' => '0dell', 'picture' => 'https://example.com/odell.png'], now()->getTimestamp() - 10)]);
     expect(ImpersonationHold::query()->open()->sole()->only(['matched_pubkey', 'matched']))->toBe(['matched_pubkey' => $original->pubkey, 'matched' => 'both']);
+});
+
+test('Q4: a released picture match is not raised again for the same picture, but a different picture of the same original is', function () {
+    $original = ihOriginal();
+    $signer = new TestSigner;
+    $fresh = User::factory()->withPubkey($signer->pubkey)->create(['name' => null, 'picture' => null, 'created_at' => now()->subDay()]);
+    ProfileCache::acceptEvents([ihProfile($signer, ['name' => 'Freshman', 'picture' => 'https://example.com/odell.png'], now()->getTimestamp() - 30)]);
+    $hold = ImpersonationHold::query()->sole();
+    expect($hold->only(['matched_pubkey', 'matched', 'picture']))->toBe(['matched_pubkey' => $original->pubkey, 'matched' => 'picture', 'picture' => 'https://example.com/odell.png']);
+
+    app(Impersonation::class)->release(ihAdmin(), $hold);
+    ProfileCache::acceptEvents([ihProfile($signer, ['name' => 'Freshman Two', 'picture' => 'https://example.com/odell.png'], now()->getTimestamp() - 20)]);
+    Impersonation::check($fresh->refresh());
+    expect(ImpersonationHold::query()->count())->toBe(1)
+        ->and(FairPlay::barred([$fresh->pubkey]))->toBe([]);
+
+    $original->forceFill(['picture' => 'https://example.com/odell-2026.png'])->save();
+    ProfileCache::acceptEvents([ihProfile($signer, ['name' => 'Freshman Two', 'picture' => 'https://example.com/odell-2026.png'], now()->getTimestamp() - 10)]);
+    expect(ImpersonationHold::query()->open()->sole()->only(['matched_pubkey', 'matched', 'picture']))
+        ->toBe(['matched_pubkey' => $original->pubkey, 'matched' => 'picture', 'picture' => 'https://example.com/odell-2026.png'])
+        ->and(FairPlay::barred([$fresh->pubkey])[$fresh->pubkey]['kind'] ?? null)->toBe('held');
 });
 
 test('a bar ends the hold: the next check raises no new hold while the bar runs, and raises it again once the bar ended', function () {
