@@ -299,7 +299,8 @@ test('P1 main navigation: each page marks the item the board marks (G4), at 1440
 
 /**
  * German formats on German pages (G5, B2): text nodes of the page with a number grouped by a space ("2 100"), a
- * 4- to 7-digit number above 999 without a separator that is not a year ("1143"), an ISO date ("2026-11-07"), a
+ * 4- to 7-digit number above 999 without a separator that is not a year ("1143") and not the tail of a key
+ * ("npub1…8562", "…us238562": digits after a letter or an ellipsis), an ISO date ("2026-11-07"), a
  * German month written before its day ("Okt 5", "Sep 25, 2026") or an English stock phrase.
  */
 const P1_FORMATS = <<<'JS'
@@ -313,7 +314,7 @@ const P1_FORMATS = <<<'JS'
         const t = n.textContent;
         const push = (kind, m) => out.push(kind + ': ' + t.trim().replace(/\s+/g, ' ').slice(0, 60));
         if (/\d[    ]\d{3}(?!\d)/.test(t) && !/\d{1,2}[  ]\d{3}\s*(px|ms)/.test(t)) push('space-grouped', t);
-        for (const m of t.matchAll(/(?<![\d.,:#\/\-])(\d{4,7})(?![\d.,:\-\/])/g)) {
+        for (const m of t.matchAll(/(?<![\d.,:#\/\-…A-Za-z])(\d{4,7})(?![\d.,:\-\/])/g)) {
             const v = Number(m[1]);
             if (v >= 1900 && v <= 2100 && m[1].length === 4) continue;
             if (/^\s*Zeichen/.test(t.slice(m.index + m[1].length))) continue;
