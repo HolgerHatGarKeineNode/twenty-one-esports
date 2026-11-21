@@ -1,9 +1,16 @@
 <?php
 
+use App\Models\ImpersonationHold;
 use App\Models\Season;
+use App\Models\User;
 use App\Support\FairPlay\Checks;
+use App\Support\FairPlay\Impersonation;
 use App\Support\Formats;
+use App\Support\LeagueTime;
+use App\Support\Nostr\NostrKeys;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -16,6 +23,10 @@ use Livewire\Component;
  * page only reads. "Bar…" leads to the bar form of /admin/fair-play with the
  * player picked; the admin still gives a reason there and presses the button.
  * Nothing is punished automatically and no player ever sees this list.
+ *
+ * On top, the open impersonation holds (App\Support\FairPlay\Impersonation):
+ * each leads to its decision page with both profiles side by side. Shown
+ * while the hold is switched on, or while a hold is still open.
  */
 new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
@@ -45,6 +56,33 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
         return $this->season === null ? ['rows' => [], 'players' => 0, 'flagged' => 0, 'truncated' => false] : app(Checks::class)->read($this->season, $this->all);
     }
 
+    /**
+     * The open impersonation holds, oldest first.
+     *
+     * @return Collection<int, ImpersonationHold>
+     */
+    #[Computed]
+    public function holds(): Collection
+    {
+        Gate::authorize('admin');
+
+        return ImpersonationHold::query()->open()->orderBy('detected_at')->orderBy('id')->limit(100)->get();
+    }
+
+    /** @return array<string, string> pubkey => display name of every account the holds name */
+    #[Computed]
+    public function holdNames(): array
+    {
+        $pubkeys = $this->holds->flatMap(fn (ImpersonationHold $hold): array => [$hold->pubkey, $hold->matched_pubkey])->unique()->values()->all();
+
+        return User::query()->whereIn('pubkey', $pubkeys)->get(['id', 'pubkey', 'npub', 'name'])->mapWithKeys(fn (User $user): array => [$user->pubkey => $user->displayName()])->all();
+    }
+
+    public function holdName(string $pubkey): string
+    {
+        return $this->holdNames[$pubkey] ?? (NostrKeys::isHexPubkey($pubkey) ? Str::limit(NostrKeys::hexToNpub($pubkey), 16, '…') : '–');
+    }
+
     public function toggleAll(): void
     {
         Gate::authorize('admin');
@@ -62,6 +100,24 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
     <x-slot:readout>
         <span class="flex items-baseline gap-2"><span class="rv-m">{{ __('conspicuous') }}</span><span class="rv-num text-base {{ $checks['flagged'] > 0 ? 'text-btc-hi' : 'text-ink' }}" data-test="readout-value">{{ $checks['flagged'] }}</span></span><span class="flex items-baseline gap-2"><span class="rv-m">{{ __('players') }}</span><span class="rv-num text-base text-ink" data-test="checks-players">{{ $checks['players'] }}</span></span>
     </x-slot:readout>
+
+    @if (Impersonation::enabled() || $this->holds->isNotEmpty())
+        <x-admin.panel :title="__('Held accounts')" :meta="__('look like another account, oldest first')" flush data-test="checks-holds">
+            @forelse ($this->holds as $hold)
+                <div class="flex flex-col gap-2 border-t border-hairline py-3 first:border-t-0 lg:flex-row lg:items-center lg:justify-between lg:gap-4" wire:key="hold-{{ $hold->id }}" data-test="checks-hold" data-hold="{{ $hold->id }}">
+                    <span class="flex min-w-0 flex-col gap-0.5 text-[13px]">
+                        <b class="[overflow-wrap:anywhere]" data-test="checks-hold-name">{{ $this->holdName($hold->pubkey) }}</b>
+                        <span class="text-xs text-ink-2 [overflow-wrap:anywhere]">{{ __('looks like :name', ['name' => $this->holdName($hold->matched_pubkey)]) }} · {{ match ($hold->matched) { 'both' => __('name and picture'), 'picture' => __('picture'), default => __('name') } }} · {{ LeagueTime::stamp($hold->detected_at) }}</span>
+                    </span>
+                    <span class="flex shrink-0 flex-wrap gap-2">
+                        <x-button variant="secondary" :href="route('admin.checks.hold', $hold)" data-test="checks-hold-decide">{{ __('Decide…') }}</x-button>
+                    </span>
+                </div>
+            @empty
+                <x-admin.empty :text="__('No account is held. An account whose name or picture looks like another account\'s is listed here until you decide.')" data-test="checks-holds-empty" />
+            @endforelse
+        </x-admin.panel>
+    @endif
 
     <x-admin.panel :title="$all ? __('All players of the season') : __('Conspicuous players')" :meta="__('most chips first')" flush data-test="checks-list">
         @if ($this->season !== null && $checks['players'] > 0)

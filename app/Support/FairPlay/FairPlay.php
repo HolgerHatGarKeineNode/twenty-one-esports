@@ -39,19 +39,26 @@ use stdClass;
  *   rated in the live season before the switch-on date. `until` is the day
  *   the account becomes known when that is all it lacks, otherwise null. It
  *   ranks last: any other kind carries its own reason and end.
+ * - a **held** account (`held`, {@see Impersonation}, behind
+ *   `fair_play.impersonation.enabled`): its name or picture looks like that
+ *   of another account, and an admin has not decided yet. No end; the player
+ *   reads only that the account is being checked, never the reason or the
+ *   other account. It ranks before `standard`: fixing the profile steps does
+ *   not end a hold.
  *
  * Only new rated play is refused: a match accepted before keeps its pinned
  * gate ("Nothing after the accept undoes the gate"). Results between two
  * accounts of one person are voided by the link itself and rate nothing
  * afterwards ({@see samePerson()}, RatingService).
  *
- * @phpstan-type Bar array{kind: 'linked'|'barred'|'locked'|'forfeits'|'standard', until: CarbonImmutable|null, main: string|null}
+ * @phpstan-type Bar array{kind: 'linked'|'barred'|'locked'|'forfeits'|'held'|'standard', until: CarbonImmutable|null, main: string|null}
  */
 final class FairPlay
 {
     /**
-     * The barred pubkeys among these, with why and until when (a link has
-     * no end, nor has the profile standard while more than time is missing).
+     * The barred pubkeys among these, with why and until when (a link and a
+     * hold have no end, nor has the profile standard while more than time is
+     * missing).
      *
      * @param  list<string>  $pubkeys
      * @return array<string, Bar>
@@ -81,6 +88,10 @@ final class FairPlay
 
         foreach (self::forfeitLocks(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $until) {
             $barred[$pubkey] = ['kind' => 'forfeits', 'until' => $until, 'main' => null];
+        }
+
+        foreach (Impersonation::held(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey) {
+            $barred[$pubkey] = ['kind' => 'held', 'until' => null, 'main' => null];
         }
 
         foreach (ProfileStandard::below(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $below) {
@@ -133,6 +144,13 @@ final class FairPlay
             return $own
                 ? __('An admin linked this account to your main account :main. Only the main account plays rated matches and wins prizes.', ['main' => $main])
                 : __(':name is a second account of another player and plays no rated matches.', ['name' => $name]);
+        }
+
+        // Held for an impersonation check: no reason and no other account, to the owner nor to anybody else.
+        if ($bar['kind'] === 'held') {
+            return $own
+                ? __('Your account is being checked. Rated play opens again once the check is done. Casual play stays open.')
+                : __(':name cannot play rated at the moment.', ['name' => $name]);
         }
 
         // Below the profile standard: the owner reads only the steps still missing, another player only that.

@@ -40,6 +40,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // The checking view: which players of the live season look conspicuous; read-only, barring happens on fair-play.
     Route::livewire('checks', 'pages::admin.checks')->name('checks');
+    // One impersonation hold: both profiles side by side and the decision (release, same person, bar).
+    Route::livewire('checks/holds/{hold}', 'pages::admin.impersonation-hold')->whereNumber('hold')->name('checks.hold');
 
     // Site-wide mutes and bans of a Nostr key: the list with Undo, and the moderation menu on every chat message.
     Route::livewire('moderation', 'pages::admin.moderation')->name('moderation');

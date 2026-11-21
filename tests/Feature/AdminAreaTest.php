@@ -2,6 +2,7 @@
 
 use App\Enums\SeriesStatus;
 use App\Models\Admin;
+use App\Models\ImpersonationHold;
 use App\Models\NostrEvent;
 use App\Models\RelayDelivery;
 use App\Models\SeriesMatch;
@@ -39,7 +40,8 @@ test('every admin page renders the admin nav with every group and the breadcrumb
     $admin = adminAreaAdmin();
     $match = SeriesMatch::factory()->create(['status' => SeriesStatus::Disputed]);
     $tournament = Tournament::factory()->create();
-    $bindings = ['match' => $match->getRouteKey(), 'tournament' => $tournament->id];
+    $hold = ImpersonationHold::factory()->create();
+    $bindings = ['match' => $match->getRouteKey(), 'tournament' => $tournament->id, 'hold' => $hold->id];
     // Files and actions, no pages; and the Block 0 stage, a fullscreen page for board members only without
     // the admin nav (StageTest covers who may open it).
     $skip = ['admin.disputes.evidence', 'admin.season.stage'];
@@ -67,9 +69,9 @@ test('every admin page renders the admin nav with every group and the breadcrumb
     }
 
     // The loop must have met every admin page; a filter that matches nothing proves nothing.
-    expect($checked)->toContain('admin.status', 'admin.admins', 'admin.organizers', 'admin.disputes', 'admin.disputes.show', 'admin.season', 'admin.trust',
+    expect($checked)->toContain('admin.status', 'admin.admins', 'admin.organizers', 'admin.disputes', 'admin.disputes.show', 'admin.checks.hold', 'admin.season', 'admin.trust',
         'admin.events', 'admin.payouts', 'admin.tournaments', 'admin.tournaments.create', 'admin.tournaments.edit', 'admin.fair-play', 'admin.checks', 'admin.settings', 'admin.nip05', 'admin.league-weeks', 'admin.moderation', 'admin.overlays')
-        ->and(count($checked))->toBe(19);
+        ->and(count($checked))->toBe(20);
 });
 
 test('the prize pool page of a tournament carries the admin frame for an admin', function () {

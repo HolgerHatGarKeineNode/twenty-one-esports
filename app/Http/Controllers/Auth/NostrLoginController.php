@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\InviteLink;
 use App\Models\User;
+use App\Support\FairPlay\Impersonation;
 use App\Support\Membership;
 use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\LoginChallenges;
@@ -71,6 +72,11 @@ class NostrLoginController extends Controller
         );
 
         ProfileCache::apply($user, $payload['profile'] ?? null);
+
+        // The impersonation check on login; a changed name or picture was checked by the profile cache already.
+        if (! $user->wasChanged(['name', 'picture'])) {
+            Impersonation::check($user);
+        }
 
         // After the response is sent: a slow or unreachable Verein API must
         // never delay the login. A failed check keeps the last known state.

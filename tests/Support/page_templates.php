@@ -16,6 +16,8 @@ return [
     'admin/⚡disputes.blade.php' => ['T-Admin-List', 'AdminDisputes › AdminDisputes'],
     'admin/⚡events.blade.php' => ['T-Admin-List', 'AdminEvents › AdminEvents'],
     'admin/⚡fair-play.blade.php' => ['T-Admin-Case', 'AdminFairPlay › AdminFairPlay'],
+    // The impersonation hold (plan "Profile standard and impersonation", P2, 2026-11-21): a case page with both profiles side by side; no canvas board yet (NEU, Scope).
+    'admin/⚡impersonation-hold.blade.php' => ['T-Admin-Case (NEU, Scope)', 'AdminFairPlay › AdminFairPlay'],
     'admin/⚡league-weeks.blade.php' => ['T-Admin-List', 'AdminLeagueWeeks › AdminLeagueWeeks'],
     'admin/⚡moderation.blade.php' => ['T-Admin-List', 'AdminModeration › AdminModeration'],
     'admin/⚡nip05.blade.php' => ['T-Admin-List', 'AdminNip05 › AdminNip05'],

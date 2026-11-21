@@ -6,6 +6,7 @@ use App\Jobs\VerifyNip05;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\FairPlay\Impersonation;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -170,6 +171,11 @@ final class ProfileCache
         // A changed address has no check time any more, so it is due at once.
         self::verifyNip05WhenDue($user);
         self::renameEntries($user, $previousName);
+
+        // A new name or picture is compared with the other accounts (impersonation hold; nothing runs while it is off).
+        if ($user->wasChanged(['name', 'picture'])) {
+            Impersonation::check($user);
+        }
 
         return true;
     }

@@ -45,10 +45,11 @@ final class RatedChess
      * a word: `season` (no season live), `later` (a running season without
      * this mode yet), `closed` (rated chess off, or trust ranks not computed
      * yet), `barred` (fair play), `standard` (below the profile standard, no
-     * bar: the player can fix it) or `trust` (below the trust minimum). Null
+     * bar: the player can fix it), `held` (an impersonation check waits for
+     * an admin; no reason given) or `trust` (below the trust minimum). Null
      * while rated chess is open for this player in this mode.
      *
-     * @return array{kind: 'season'|'later'|'closed'|'barred'|'standard'|'trust', message: string}|null
+     * @return array{kind: 'season'|'later'|'closed'|'barred'|'standard'|'held'|'trust', message: string}|null
      */
     public function reason(User $user, string $mode): ?array
     {
@@ -69,9 +70,9 @@ final class RatedChess
 
         // Fair play (P41): a linked second account or a lock after false reports; the message says until when.
         if (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
-            $standard = (FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null) === 'standard';
+            $kind = FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null;
 
-            return ['kind' => $standard ? 'standard' : 'barred', 'message' => $barred];
+            return ['kind' => in_array($kind, ['standard', 'held'], true) ? $kind : 'barred', 'message' => $barred];
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {

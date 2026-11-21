@@ -237,6 +237,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     'later' => __('opens later'),
                     'barred' => __('barred'),
                     'standard' => __('profile not ready'),
+                    'held' => __('account being checked'),
                     'trust' => __('Trusted needed'),
                     'opponent' => __('opponent missing'),
                     default => __('not open yet'),

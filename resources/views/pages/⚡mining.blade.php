@@ -138,11 +138,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         if (! $facts->available()) {
             $chips[] = ['key' => 'trust', 'state' => 'wait', 'label' => __('Trust ranks not computed yet'), 'href' => null, 'cta' => null, 'title' => RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED)];
         } elseif (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
-            // Below the profile standard is no bar an admin set: the chip says so and leads to the steps.
-            $standard = (FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null) === 'standard';
-            $chips[] = $standard
-                ? ['key' => 'trust', 'state' => 'bad', 'label' => __('Profile not ready for rated play'), 'href' => route('settings.opponents').'#rated-standard', 'cta' => __('What is missing'), 'title' => $barred]
-                : ['key' => 'trust', 'state' => 'bad', 'label' => __('Barred from rated play'), 'href' => null, 'cta' => null, 'title' => $barred];
+            // Below the profile standard is no bar an admin set: the chip says so and leads to the steps. A held account
+            // reads only that it is being checked, with nothing to click.
+            $chips[] = match (FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null) {
+                'standard' => ['key' => 'trust', 'state' => 'bad', 'label' => __('Profile not ready for rated play'), 'href' => route('settings.opponents').'#rated-standard', 'cta' => __('What is missing'), 'title' => $barred],
+                'held' => ['key' => 'trust', 'state' => 'wait', 'label' => __('Account being checked'), 'href' => null, 'cta' => null, 'title' => $barred],
+                default => ['key' => 'trust', 'state' => 'bad', 'label' => __('Barred from rated play'), 'href' => null, 'cta' => null, 'title' => $barred],
+            };
         } else {
             $rank = (int) (TrustRank::query()->where('pubkey', $user->pubkey)->value('rank') ?? 0);
             $trusted = $rank >= $minimum;

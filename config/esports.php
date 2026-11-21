@@ -949,6 +949,14 @@ return [
             'since' => env('ESPORTS_PROFILE_STANDARD_SINCE'),
         ],
 
+        // Impersonation hold (App\Support\FairPlay\Impersonation, plan "Profile standard and impersonation", P2): on
+        // login and on every applied profile change, an account whose name reads like (confusables folded, at least 3
+        // characters) or whose picture URL equals that of an account with precedence is held from new rated play until
+        // an admin decided on /admin/checks. Off by default: off, nothing is detected, written or read.
+        'impersonation' => [
+            'enabled' => (bool) env('ESPORTS_IMPERSONATION_HOLD', false),
+        ],
+
         'checks' => [
             // One opponent dominates: this share (percent) of a player's blocks won against one opponent. With the
             // season pair limit of 3, an honest player passes 60 % only while he has mined 5 blocks or fewer.

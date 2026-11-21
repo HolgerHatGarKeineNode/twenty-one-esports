@@ -3,6 +3,7 @@
 namespace App\Support\SeasonChain;
 
 use App\Models\NostrEvent;
+use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Database\Eloquent\Builder;
@@ -135,6 +136,25 @@ final class OpponentLists
         $newest = [];
 
         foreach (DB::table('opponent_lists_current')->where('d', $this->d())->orderBy('pubkey')->get(['pubkey', 'entries']) as $row) {
+            $newest[(string) $row->pubkey] = self::decode((string) $row->entries);
+        }
+
+        return $newest;
+    }
+
+    /**
+     * The newest entries of these authors only (a list of pubkeys or a
+     * subquery selecting them), from the current rows; authors without a
+     * list are absent.
+     *
+     * @param  list<string>|Builder<User>  $authors
+     * @return array<string, list<string>>
+     */
+    public function newestEntriesOf(array|Builder $authors): array
+    {
+        $newest = [];
+
+        foreach (DB::table('opponent_lists_current')->where('d', $this->d())->whereIn('pubkey', $authors)->orderBy('pubkey')->get(['pubkey', 'entries']) as $row) {
             $newest[(string) $row->pubkey] = self::decode((string) $row->entries);
         }
 
