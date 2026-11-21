@@ -1,12 +1,19 @@
 <?php
 
+use App\Models\Clan;
 use App\Models\ImpersonationHold;
+use App\Models\Lineup;
 use App\Models\SeasonAttestation;
 use App\Models\User;
+use App\Support\FairPlay\AcceptWarnings;
 use App\Support\FairPlay\FairPlay;
 use App\Support\FairPlay\ProfileStandard;
 use App\Support\LeagueTime;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\TrustFacts;
+use App\Support\Series\ChallengeDraft;
+use App\Support\Series\SeriesService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -23,6 +30,9 @@ use Tests\Support\TestSigner;
 | `prepareAdd` refuses. Each part follows its switch and the exemption; a
 | hold says only that the account is being checked. The accept still makes
 | the lists mutual, and rated play stays barred until the standard is met.
+| D17: the same warning and confirm on the opponent button, which is the
+| player page's "Add as opponent" and the match room's accept of the
+| sender's request (inline, inside the "do not list each other" notice).
 |
 */
 
@@ -91,8 +101,9 @@ test('each missing hard mark alone shows its line in plain words, behind a confi
 })->with([
     'known for 6 days only' => [['created_at' => now()->subDays(6)], 'known', 'New here: an account plays rated from 7 days after its first login'],
     'no NIP-05' => [['nip05' => null, 'nip05_verified_at' => null], 'nip05', 'No NIP-05 address set.'],
-    'no picture' => [['picture' => null], 'profile', 'No name or no profile picture in the Nostr profile.'],
-    'empty name' => [['name' => ' '], 'profile', 'No name or no profile picture in the Nostr profile.'],
+    'no picture' => [['picture' => null], 'profile', 'No profile picture'],
+    'empty name' => [['name' => ' '], 'profile', 'No name in the profile'],
+    'no name and no picture' => [['name' => '', 'picture' => null], 'profile', 'No name and no profile picture'],
 ]);
 
 test('the known line names the moment the account reaches the standard, and every missing mark shows in the player\'s step order, in English and German', function () {
@@ -105,7 +116,7 @@ test('the known line names the moment the account reaches the standard, and ever
 
     app()->setLocale('de');
     Livewire::actingAs($this->alice)->test('pages::settings.opponents')
-        ->assertSeeInOrder(['bob kann noch nicht gewertet spielen:', 'Neu hier: Ein Konto spielt ab 7 Tagen', 'Keine NIP-05-Adresse festgelegt.', 'Kein Name oder kein Profilbild im Nostr-Profil.', 'Du kannst trotzdem annehmen.', 'Trotzdem annehmen']);
+        ->assertSeeInOrder(['bob kann noch nicht gewertet spielen:', 'Neu hier: Ein Konto spielt ab 7 Tagen', 'Keine NIP-05-Adresse festgelegt.', 'Kein Profilbild', 'Du kannst trotzdem annehmen.', 'Trotzdem annehmen']);
 });
 
 test('a hold reads only that the account is being checked: never whom it resembles, never why', function () {
@@ -203,4 +214,115 @@ test('without a warning the plain accept still signs in one step', function () {
 
     expect(app(Opponents::class)->listEachOther($this->alice, $bob))->toBeTrue()
         ->and(FairPlay::barred([$bob->pubkey]))->toBe([]);
+});
+
+test('player page: adding an account below the standard shows the warning, refuses the one-step add, and adds after the confirm', function () {
+    $carolSigner = new TestSigner;
+    $carol = User::factory()->withPubkey($carolSigner->pubkey)->create(['name' => 'carol', 'picture' => null, 'created_at' => now()->subDays(8)]);
+    $page = Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $carol]);
+
+    preg_match_all('/data-test="opponent-request-warning-(\w+)"/', $page->html(), $lines);
+    expect($lines[1])->toBe(['nip05', 'profile']);
+    $page->assertSeeInOrder(['carol cannot play rated yet:', 'No NIP-05 address set.', 'No profile picture', 'You can still add them.', 'Add carol anyway?', 'Add anyway', 'Add as opponent'])
+        ->assertSeeHtml('data-test="opponent-confirm"')->assertDontSeeHtml("run('prepareAdd', 'add')");
+
+    $page->call('prepareAdd')->assertHasErrors('opponent')->assertReturned(null)->assertSee('Read the note above first, then confirm.');
+
+    $templates = $page->instance()->prepareConfirmedAdd(app(Opponents::class));
+    expect($templates)->toBeArray()->not->toBeEmpty();
+    $page->call('add', json_encode($this->aliceSigner->signTemplates($templates)));
+
+    expect(app(Opponents::class)->lists($this->alice, $carol))->toBeTrue()
+        ->and(FairPlay::barred([$carol->pubkey])[$carol->pubkey]['kind'] ?? null)->toBe('standard');
+});
+
+test('player page: accepting the request of a held account reads only that it is being checked, and accepts after the confirm', function () {
+    $original = User::factory()->create(['name' => 'Odell', 'created_at' => now()->subYear()]);
+    $bob = awRequester(['name' => 'Odeli']);
+    awHold($bob, $original);
+
+    foreach (['en' => ['This account is being checked.', 'Accept Odeli anyway?', 'Accept anyway'], 'de' => ['Dieses Konto wird gerade geprüft.', 'Odeli trotzdem annehmen?', 'Trotzdem annehmen']] as $locale => $texts) {
+        app()->setLocale($locale);
+        $html = Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $bob])->html();
+        preg_match_all('/data-test="opponent-request-warning-(\w+)"/', $html, $lines);
+        $lower = mb_strtolower($html);
+
+        expect($lines[1])->toBe(['held'])
+            ->and($html)->toContain($texts[0])->toContain($texts[1])->toContain($texts[2])
+            ->and($lower)->not->toContain('odell')->not->toContain('imperson')->not->toContain('gesicht')->not->toContain('face');
+    }
+
+    app()->setLocale('en');
+    $page = Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $bob]);
+    $page->call('prepareAdd')->assertHasErrors('opponent')->assertReturned(null);
+    $page->call('add', json_encode($this->aliceSigner->signTemplates($page->instance()->prepareConfirmedAdd(app(Opponents::class)))));
+
+    expect(app(Opponents::class)->listEachOther($this->alice, $bob))->toBeTrue()
+        ->and(FairPlay::barred([$bob->pubkey])[$bob->pubkey]['kind'] ?? null)->toBe('held');
+});
+
+test('player page: without a warning, while the switches are off or for a listed player, the button adds in one click as before and the warnings run no query', function () {
+    $met = awRequester(['name' => 'met']);
+    $page = Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $met]);
+    $page->assertDontSeeHtml('data-test="opponent-request-warning"')->assertDontSeeHtml('data-test="opponent-confirm"')->assertSeeHtml("run('prepareAdd', 'add')");
+    expect($page->instance()->prepareAdd(app(Opponents::class)))->toBeArray()->not->toBeEmpty();
+
+    config(['esports.fair_play.profile_standard.enabled' => false, 'esports.fair_play.impersonation.enabled' => false]);
+    $bare = awRequester(['name' => '', 'picture' => null, 'nip05' => null, 'nip05_verified_at' => null, 'created_at' => now()]);
+    awHold($bare, $met);
+    Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $bare])
+        ->assertDontSeeHtml('data-test="opponent-request-warning"')->assertSeeHtml("run('prepareAdd', 'add')");
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $warnings = AcceptWarnings::for([$bare, $met]);
+    $queries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+    expect($warnings)->toBe([])->and($queries)->toBe(0);
+});
+
+test('match room: the challenged captain whose challenger is held sees the warning inside the notice, and the accept there needs the confirm', function () {
+    openSeason();
+    app()->instance(TrustFacts::class, new class implements TrustFacts
+    {
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function at(array $players, array $gatekeepers): array
+        {
+            return ['trust' => array_fill_keys($players, 100), 'anchors' => [], 'connected' => true];
+        }
+    });
+    $captains = [];
+    foreach (['anna', 'bert'] as $name) {
+        $signer = new TestSigner;
+        $captain = User::factory()->withPubkey($signer->pubkey)->create(['name' => $name, 'picture' => 'https://example.com/'.$name.'.png', 'nip05' => $name.'@example.com', 'nip05_verified_at' => now()->subDays(20), 'created_at' => now()->subMonths(2)]);
+        $lineup = Lineup::factory()->mode('1v1')->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id, 'name' => $name.' clan'])->id]);
+        $captains[$name] = [$lineup, $captain, $signer];
+    }
+    [$a, $b] = [$captains['anna'], $captains['bert']];
+    $service = app(SeriesService::class);
+    $start = now()->addHour()->startOfMinute()->getTimestamp();
+    $draft = new ChallengeDraft($a[0]->id, $b[0]->id, 3, true, [$start], $start - 600, '');
+    $match = $service->challenge($a[1], $draft, $a[2]->signTemplates($service->prepareChallenge($a[1], $draft)['templates']));
+    $opponents = app(Opponents::class);
+    $opponents->add($a[1], $b[1], $a[2]->signTemplates($opponents->prepareAdd($a[1], $b[1])));
+    // The hold is raised after the challenge was sent (on a profile change, P2).
+    awHold($a[1], User::factory()->create(['name' => 'Anna Original', 'created_at' => now()->subYears(2)]));
+
+    $html = $this->actingAs($b[1])->get(route('matches.room', $match))->assertOk()->getContent();
+    $notice = str($html)->after('data-test="needs-mutual"')->toString();
+    preg_match_all('/data-test="opponent-request-warning-(\w+)"/', $notice, $lines);
+
+    expect($lines[1])->toBe(['held'])
+        ->and($notice)->toContain('This account is being checked.')->toContain('Accept anna anyway?')->toContain('Accept anna&#039;s request')
+        ->and(mb_strtolower($notice))->not->toContain('anna original');
+
+    $button = Livewire::actingAs($b[1])->test('opponent-button', ['player' => $a[1], 'inline' => true]);
+    $button->call('prepareAdd')->assertHasErrors('opponent')->assertReturned(null);
+    $button->call('add', json_encode($b[2]->signTemplates($button->instance()->prepareConfirmedAdd(app(Opponents::class)))));
+
+    expect($opponents->listEachOther($a[1], $b[1]))->toBeTrue();
 });

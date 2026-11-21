@@ -9678,8 +9678,11 @@
     "This account is being checked.": "Dieses Konto wird gerade geprüft.",
     "New here: an account plays rated from :days days after its first login, so from :time.": "Neu hier: Ein Konto spielt ab :days Tagen nach seiner ersten Anmeldung gewertet, also ab :time.",
     "No NIP-05 address set.": "Keine NIP-05-Adresse festgelegt.",
-    "No name or no profile picture in the Nostr profile.": "Kein Name oder kein Profilbild im Nostr-Profil.",
     "You can still accept. Rated games between you open only after that.": "Du kannst trotzdem annehmen. Gewertete Partien zwischen euch sind erst danach möglich.",
     "Accept :name anyway?": ":name trotzdem annehmen?",
-    "Accept anyway": "Trotzdem annehmen"
+    "Accept anyway": "Trotzdem annehmen",
+    "Read the note above first, then confirm.": "Lies zuerst den Hinweis darüber und bestätige dann.",
+    "You can still add them. Rated games between you open only after that.": "Du kannst die Person trotzdem hinzufügen. Gewertete Partien zwischen euch sind erst danach möglich.",
+    "Add :name anyway?": ":name trotzdem als Gegner hinzufügen?",
+    "Add anyway": "Trotzdem hinzufügen"
 }

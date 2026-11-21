@@ -17,7 +17,9 @@ use App\Support\LeagueTime;
  *
  * Each part follows its switch and the exemption exactly as rated play does:
  * while a switch is off, its part warns about nothing, so a member never
- * reads about a rule that does not apply yet. The accept stays possible;
+ * reads about a rule that does not apply yet, and nothing is queried. Read
+ * on the request cards of /settings/opponents and by the opponent button
+ * (player page, match room, lobby notices; D17). The accept stays possible;
  * {@see FairPlay::barred()} keeps the requester out of rated play until the
  * standard is met or the hold ends.
  */
@@ -63,7 +65,12 @@ final class AcceptWarnings
                 'days' => ProfileStandard::knownDays(), 'time' => LeagueTime::stamp(ProfileStandard::knownAt($player)),
             ]),
             ProfileStandard::NIP05 => __('No NIP-05 address set.'),
-            default => __('No name or no profile picture in the Nostr profile.'),
+            // The same three texts as the admin check page (P3), so the line says exactly what is missing.
+            default => match (true) {
+                trim((string) $player->name) === '' && trim((string) $player->picture) === '' => __('No name and no profile picture'),
+                trim((string) $player->name) === '' => __('No name in the profile'),
+                default => __('No profile picture'),
+            },
         };
     }
 }

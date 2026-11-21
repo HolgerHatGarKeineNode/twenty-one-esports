@@ -201,7 +201,7 @@ new #[Title('Opponents')] class extends Component {
                             $warning = $warnings[$pubkey] ?? null;
                         @endphp
                         <li wire:key="request-{{ $pubkey }}" class="flex flex-col gap-3 rounded-md bg-well p-4 shadow-ring-hairline" data-test="opponent-request" data-pubkey="{{ $pubkey }}"
-                            @if ($warning) x-data="{ confirming: false }" @endif>
+                            x-data="{ confirming: false }">
                             <x-player-link :user="$player" class="flex min-h-11 min-w-0 items-center gap-3 self-start text-ink hover:text-ink">
                                 <x-avatar :user="$player" :size="40" class="shrink-0 rounded-md" /><b class="min-w-0 text-[15px] [overflow-wrap:anywhere]">{{ $name }}</b>
                             </x-player-link>
@@ -238,25 +238,8 @@ new #[Title('Opponents')] class extends Component {
                             @endif
 
                             @if ($warning)
-                                {{-- P4: why rated play with them stays closed for now; a hold says only that the account is checked, never why. --}}
-                                <div class="flex max-w-[68ch] items-start gap-2 rounded-md bg-btc-tint px-3 py-2 text-[13px] leading-normal text-btc-hi" role="note" data-test="opponent-request-warning">
-                                    <x-icon name="alert" :size="16" class="mt-0.5 shrink-0" />
-                                    <div class="flex min-w-0 flex-col gap-1">
-                                        <p class="m-0 font-bold">{{ __(':name cannot play rated yet:', ['name' => $name]) }}</p>
-                                        <ul class="m-0 flex list-disc flex-col gap-1 pl-4">
-                                            @if ($warning['held'])
-                                                <li data-test="opponent-request-warning-held">{{ __('This account is being checked.') }}</li>
-                                            @endif
-                                            @foreach ($warning['missing'] as $mark)
-                                                <li data-test="opponent-request-warning-{{ $mark['key'] }}">{{ $mark['text'] }}</li>
-                                            @endforeach
-                                        </ul>
-                                        <p class="m-0">{{ __('You can still accept. Rated games between you open only after that.') }}</p>
-                                    </div>
-                                </div>
-                            @endif
+                                <x-opponents.accept-warning :warning="$warning" :name="$name" />
 
-                            @if ($warning)
                                 {{-- Deferred: Accept only opens the confirm; nothing is signed before "Accept anyway" (R18, focus on the safe choice). --}}
                                 <div x-show="confirming" x-cloak class="flex flex-col gap-2 rounded-md border border-line p-3" role="group" aria-label="{{ __('Accept :name as opponent', ['name' => $name]) }}" data-test="opponent-request-confirm">
                                     <p class="m-0 text-[13px] leading-normal text-ink">{{ __('Accept :name anyway?', ['name' => $name]) }}</p>

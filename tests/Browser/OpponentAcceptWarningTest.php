@@ -1,8 +1,13 @@
 <?php
 
+use App\Models\Clan;
 use App\Models\ImpersonationHold;
+use App\Models\Lineup;
 use App\Models\User;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\TrustFacts;
+use App\Support\Series\ChallengeDraft;
+use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -29,6 +34,11 @@ pest()->group('browser');
 | the block inside the viewport, every button and link at least 44 x 44 px,
 | no button text on two lines, nothing squeezed, the console and every
 | response clean (a thrown error as positive control at the end).
+|
+| D17: the same warning and confirm on the opponent button, on a player
+| page ("Add as opponent", the player does not list you) and in the match
+| room (accepting the challenger's request inside the "do not list each
+| other" notice), each at 390 and 1440 in German and English.
 |
 | AW_SHOTS=<dir> additionally writes the screenshots there.
 |
@@ -159,6 +169,13 @@ function awRequest(User $member, array $attributes): User
     return $player;
 }
 
+/** One server roundtrip of the Livewire component around the element (a $refresh), awaited. */
+function awRefresh(Page $page, string $selector = '[data-test=opponent-settings]'): void
+{
+    $page->evaluate('() => Livewire.find(document.querySelector('.json_encode($selector).').closest("[wire\\\\:id]").getAttribute("wire:id")).$refresh()');
+    $page->evaluate('() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+}
+
 function awCardSelector(User $player, string $inner = ''): string
 {
     return '[data-test=opponent-request][data-pubkey="'.$player->pubkey.'"]'.($inner === '' ? '' : ' '.$inner);
@@ -173,6 +190,9 @@ test('a request below the standard or under a hold warns, takes a confirm before
     $held = awRequest($anna, ['name' => 'Odeli', ...$met]);
     ImpersonationHold::factory()->create(['user_id' => $held->id, 'pubkey' => $held->pubkey, 'matched_user_id' => $original->id, 'matched_pubkey' => $original->pubkey]);
     $clean = awRequest($anna, ['name' => 'bert', ...$met]);
+    $late = awRequest($anna, ['name' => 'Spätzünder', ...$met]);
+    $turn = awRequest($anna, ['name' => 'Wendehals', ...$met]);
+    $lateHold = ImpersonationHold::factory()->create(['user_id' => $late->id, 'pubkey' => $late->pubkey, 'matched_user_id' => $original->id, 'matched_pubkey' => $original->pubkey]);
     $opponents = app(Opponents::class);
 
     foreach (['de' => $fresh, 'en' => $held] as $locale => $requester) {
@@ -216,8 +236,12 @@ test('a request below the standard or under a hold warns, takes a confirm before
         expect($opponents->entries($anna))->not->toContain($requester->pubkey);
 
         // Accept, then "Accept anyway": signed, the request goes, the lists are mutual.
+        $this->travel(2)->seconds();
         $page->locator(awCardSelector($requester, '[data-test=opponent-request-accept]'))->click();
         BrowserWait::until($page, '() => document.activeElement?.dataset.test === "opponent-request-confirm-cancel"', 5_000);
+        // A server roundtrip while the confirm is open keeps it open (the card is keyed, its x-data stable).
+        awRefresh($page);
+        expect($page->evaluate('() => document.querySelector('.json_encode(awCardSelector($requester, '[data-test=opponent-request-confirm]')).')?.checkVisibility()'))->toBeTrue();
         $page->locator(awCardSelector($requester, '[data-test=opponent-request-confirm-accept]'))->click();
         BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($requester)).') === null', 15_000);
 
@@ -225,11 +249,156 @@ test('a request below the standard or under a hold warns, takes a confirm before
         awMeasure($page, '[data-test=opponent-settings]', 390, "{$locale} accepted");
     }
 
-    // The clean request: no warning, one click signs as before.
+    // The clean request: no warning, one click signs as before. (A new list version needs a later second than the
+    // last one, see Opponents; the clock moves on instead of the test sleeping.)
+    $this->travel(2)->seconds();
     $page->locator(awCardSelector($clean, '[data-test=opponent-request-accept]'))->click();
     BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($clean)).') === null', 15_000);
     expect($opponents->listEachOther($anna->refresh(), $clean))->toBeTrue();
     awMeasure($page, '[data-test=opponent-settings]', 1440, 'en clean accepted');
+
+    // A warning that goes away between renders (the hold ends while the confirm is open): the card falls back to
+    // the plain one-click accept, no confirm left over.
+    $page->locator(awCardSelector($late, '[data-test=opponent-request-accept]'))->click();
+    BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($late, '[data-test=opponent-request-confirm]')).')?.checkVisibility() === true', 5_000);
+    $lateHold->forceFill(['decided_at' => now(), 'decision' => ImpersonationHold::RELEASED])->save();
+    $this->travel(2)->seconds();
+    awRefresh($page);
+    BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($late, '[data-test=opponent-request-warning]')).') === null', 5_000);
+    expect($page->evaluate('() => [document.querySelector('.json_encode(awCardSelector($late, '[data-test=opponent-request-confirm]')).'), document.querySelector('.json_encode(awCardSelector($late, '[data-test=opponent-request-accept]')).')?.checkVisibility()]'))->toBe([null, true]);
+    $page->locator(awCardSelector($late, '[data-test=opponent-request-accept]'))->click();
+    BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($late)).') === null', 15_000);
+    expect($opponents->listEachOther($anna->refresh(), $late))->toBeTrue();
+    awMeasure($page, '[data-test=opponent-settings]', 1440, 'en late accepted');
+
+    // And the other way: a card that gains a warning between renders (a hold raised now) takes the confirm.
+    ImpersonationHold::factory()->create(['user_id' => $turn->id, 'pubkey' => $turn->pubkey, 'matched_user_id' => $original->id, 'matched_pubkey' => $original->pubkey]);
+    awRefresh($page);
+    BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($turn, '[data-test=opponent-request-warning-held]')).') !== null', 5_000);
+    $page->locator(awCardSelector($turn, '[data-test=opponent-request-accept]'))->click();
+    BrowserWait::until($page, '() => document.querySelector('.json_encode(awCardSelector($turn, '[data-test=opponent-request-confirm]')).')?.checkVisibility() === true && document.activeElement?.dataset.test === "opponent-request-confirm-cancel"', 5_000);
+    expect($opponents->entries($anna->refresh()))->not->toContain($turn->pubkey);
+    awMeasure($page, awCardSelector($turn), 1440, 'en turned warned confirm open');
+
+    $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
+});
+
+/** The opponent button in its warned state: open the confirm (focus on Cancel, nothing signed), cancel, open it again. */
+function awButtonConfirm(Page $page, string $scope, User $member, User $player, string $label): void
+{
+    $page->setViewportSize(390, 900);
+    $page->locator($scope.' [data-test=opponent-add]')->click();
+    BrowserWait::until($page, '() => document.querySelector('.json_encode($scope.' [data-test=opponent-confirm]').')?.checkVisibility() === true && document.activeElement?.dataset.test === "opponent-confirm-cancel"', 5_000);
+    expect(app(Opponents::class)->lists($member, $player))->toBeFalse();
+
+    foreach ([390, 1440] as $width) {
+        awMeasure($page, $scope, $width, "{$label} confirm open");
+        awShot($page, str_replace(' ', '-', $label)."-confirm-{$width}x900");
+    }
+
+    $page->locator($scope.' [data-test=opponent-confirm-cancel]')->click();
+    BrowserWait::until($page, '() => document.querySelector('.json_encode($scope.' [data-test=opponent-confirm]').').checkVisibility() === false && document.activeElement?.dataset.test === "opponent-add"', 5_000);
+    expect(app(Opponents::class)->lists($member, $player))->toBeFalse();
+}
+
+test('player page: "Add as opponent" for an account below the standard warns, opens a confirm before anything is signed, and adds after it, at 390 and 1440 in German and English', function () {
+    $anna = User::factory()->create(['name' => 'anna', 'picture' => 'https://example.com/p.png', 'nip05' => 'x@example.com', 'nip05_verified_at' => now()->subDays(20), 'created_at' => now()->subMonths(2)]);
+    TestSigner::forBrowser($anna);
+    $carol = User::factory()->create(['name' => 'Carola von Neuland', 'picture' => null, 'nip05' => null, 'nip05_verified_at' => null, 'created_at' => now()->subDays(3)]);
+    $scope = '[data-test=opponent]';
+
+    foreach (['de', 'en'] as $locale) {
+        $page = awPage($anna, route('players.show', $carol->npub, false), 390, $locale);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=opponent] [data-test=opponent-request-warning]") !== null', 10_000);
+
+        $lines = $page->evaluate('() => [...document.querySelectorAll("[data-test=opponent] [data-test^=opponent-request-warning-]")].map((l) => l.dataset.test.replace("opponent-request-warning-", ""))');
+        $text = $page->evaluate('() => document.querySelector("[data-test=opponent]").innerText.replace(/\\s+/g, " ")');
+        fwrite(STDERR, "\n[aw] {$locale} player page: ".json_encode($lines).' '.json_encode($text, JSON_UNESCAPED_UNICODE)."\n");
+        expect($lines)->toBe(['known', 'nip05', 'profile'])
+            ->and($text)->toContain($locale === 'de' ? 'Du kannst die Person trotzdem hinzufügen.' : 'You can still add them.')
+            ->and($text)->toContain($locale === 'de' ? 'Kein Profilbild' : 'No profile picture')
+            ->and(mb_strtolower($text))->not->toContain('gesicht')->not->toContain('face');
+
+        foreach ([390, 1440] as $width) {
+            awMeasure($page, $scope, $width, "{$locale} player page");
+            awShot($page, "player-add-warning-{$width}x900-{$locale}");
+        }
+
+        awButtonConfirm($page, $scope, $anna, $carol, "player-add {$locale}");
+    }
+
+    // "Add anyway": signed, the button now says the player is on the list.
+    $page->locator('[data-test=opponent-add]')->click();
+    BrowserWait::until($page, '() => document.activeElement?.dataset.test === "opponent-confirm-cancel"', 5_000);
+    $page->locator('[data-test=opponent-confirm-add]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=opponent]")?.dataset.state === "listed"', 15_000);
+    expect(app(Opponents::class)->lists($anna->refresh(), $carol))->toBeTrue();
+    awMeasure($page, $scope, 390, 'en player page added');
+
+    $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
+});
+
+test('match room: the challenged captain whose challenger is held reads only "being checked" in the notice, and the accept there needs the confirm, at 390 and 1440 in German and English', function () {
+    openSeason();
+    app()->instance(TrustFacts::class, new class implements TrustFacts
+    {
+        public function available(): bool
+        {
+            return true;
+        }
+
+        public function at(array $players, array $gatekeepers): array
+        {
+            return ['trust' => array_fill_keys($players, 100), 'anchors' => [], 'connected' => true];
+        }
+    });
+
+    $sides = [];
+    foreach (['anna', 'bert'] as $name) {
+        $captain = User::factory()->create(['name' => $name, 'picture' => 'https://example.com/'.$name.'.png', 'nip05' => $name.'@example.com', 'nip05_verified_at' => now()->subDays(20), 'created_at' => now()->subMonths(2)]);
+        $signer = TestSigner::forBrowser($captain);
+        $sides[$name] = [Lineup::factory()->mode('1v1')->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id, 'name' => $name.' clan'])->id]), $captain, $signer];
+    }
+    [$a, $b] = [$sides['anna'], $sides['bert']];
+    $service = app(SeriesService::class);
+    $start = now()->addHour()->startOfMinute()->getTimestamp();
+    $draft = new ChallengeDraft($a[0]->id, $b[0]->id, 3, true, [$start], $start - 600, '');
+    $match = $service->challenge($a[1], $draft, $a[2]->signTemplates($service->prepareChallenge($a[1], $draft)['templates']));
+    $opponents = app(Opponents::class);
+    $opponents->add($a[1], $b[1], $a[2]->signTemplates($opponents->prepareAdd($a[1], $b[1])));
+    // The hold is raised after the challenge went out (a profile change, P2).
+    $original = User::factory()->create(['name' => 'Anna Original', 'created_at' => now()->subYears(2)]);
+    ImpersonationHold::factory()->create(['user_id' => $a[1]->id, 'pubkey' => $a[1]->pubkey, 'matched_user_id' => $original->id, 'matched_pubkey' => $original->pubkey]);
+    $scope = '[data-test=needs-mutual]';
+
+    foreach (['de', 'en'] as $locale) {
+        $page = awPage($b[1], route('matches.room', $match, false), 390, $locale);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=needs-mutual] [data-test=opponent]")?.dataset.state === "lists-you"', 10_000);
+
+        $lines = $page->evaluate('() => [...document.querySelectorAll("[data-test=needs-mutual] [data-test^=opponent-request-warning-]")].map((l) => l.dataset.test.replace("opponent-request-warning-", ""))');
+        $text = $page->evaluate('() => document.querySelector("[data-test=needs-mutual]").innerText.replace(/\\s+/g, " ")');
+        fwrite(STDERR, "\n[aw] {$locale} room notice: ".json_encode($lines).' '.json_encode($text, JSON_UNESCAPED_UNICODE)."\n");
+        expect($lines)->toBe(['held'])
+            ->and($text)->toContain($locale === 'de' ? 'Dieses Konto wird gerade geprüft.' : 'This account is being checked.')
+            ->and(mb_strtolower($text))->not->toContain('original')->not->toContain('imperson')->not->toContain('gesicht')->not->toContain('face');
+
+        foreach ([390, 1440] as $width) {
+            awMeasure($page, $scope, $width, "{$locale} room notice");
+            awShot($page, "room-accept-warning-{$width}x900-{$locale}");
+        }
+
+        awButtonConfirm($page, $scope, $b[1], $a[1], "room-accept {$locale}");
+    }
+
+    // "Accept anyway": signed, the notice goes, the lists are mutual; anna stays out of rated play while held.
+    $page->locator($scope.' [data-test=opponent-add]')->click();
+    BrowserWait::until($page, '() => document.activeElement?.dataset.test === "opponent-confirm-cancel"', 5_000);
+    $page->locator($scope.' [data-test=opponent-confirm-add]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=needs-mutual]") === null', 15_000);
+    expect($opponents->listEachOther($a[1], $b[1]->refresh()))->toBeTrue();
+    awMeasure($page, '[data-test=answer-card]', 390, 'en room accepted');
 
     $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
