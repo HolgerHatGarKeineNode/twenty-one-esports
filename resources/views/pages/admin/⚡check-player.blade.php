@@ -295,7 +295,7 @@ new #[Title('Account check')] #[Layout('layouts::app', ['section' => 'admin'])] 
             <div class="flex flex-col gap-1.5" data-test="check-holds">
                 <span class="text-xs text-ink-2">{{ __('Impersonation holds') }}</span>
                 @forelse ($this->holds as $hold)
-                    <a href="{{ route('admin.checks.hold', $hold) }}" wire:navigate class="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-hairline py-1.5 text-[13px] text-ink first:border-t-0 hover:text-btc" wire:key="check-hold-{{ $hold->id }}" data-test="check-hold" data-open="{{ $hold->isOpen() ? '1' : '0' }}">
+                    <a href="{{ route('admin.checks.hold', $hold) }}" @navigate(route('admin.checks.hold', $hold)) class="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-hairline py-1.5 text-[13px] text-ink first:border-t-0 hover:text-btc" wire:key="check-hold-{{ $hold->id }}" data-test="check-hold" data-open="{{ $hold->isOpen() ? '1' : '0' }}">
                         <span @class(['rv-tag', 'is-bad' => $hold->isOpen()])>{{ $hold->isOpen() ? __('open') : __('decided') }}</span>
                         <span class="min-w-0 [overflow-wrap:anywhere]">{{ $hold->isManual() ? __('held for review') : __('looks like :name', ['name' => $hold->matchedUser?->displayName() ?? __('an account that never logged in')]) }}</span>
                         <span class="text-xs text-ink-3">{{ LeagueTime::stamp($hold->detected_at) }}</span>

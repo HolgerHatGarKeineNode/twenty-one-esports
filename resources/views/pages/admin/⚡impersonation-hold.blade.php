@@ -231,7 +231,7 @@ new #[Title('Impersonation check')] #[Layout('layouts::app', ['section' => 'admi
                         <span id="side-{{ $key }}" class="text-xs text-ink-3">{{ $side['label'] }}</span>
                         <b class="text-[15px] [overflow-wrap:anywhere]" data-test="hold-side-name">{{ $user?->displayName() ?? $this->name($side['pubkey']) }}</b>
                         @if ($user)
-                            <a href="{{ route('admin.checks.player', $user->pubkey) }}" class="inline-flex min-h-11 items-center text-xs text-btc underline" wire:navigate data-test="hold-side-check">{{ __('Account check') }}</a>
+                            <a href="{{ route('admin.checks.player', $user->pubkey) }}" @navigate(route('admin.checks.player', $user->pubkey)) class="inline-flex min-h-11 items-center text-xs text-btc underline" data-test="hold-side-check">{{ __('Account check') }}</a>
                         @elseif ($side['listed'])
                             <span class="text-xs text-ink-3" data-test="hold-side-listed">{{ __('Never logged in; profile read from the relays, on a member’s list since :time', ['time' => LeagueTime::stamp($side['listed']->first_seen_at)]) }}</span>
                         @endif

@@ -134,7 +134,7 @@ new #[Title('Checks')] #[Layout('layouts::app', ['section' => 'admin'])] class e
             return;
         }
 
-        $this->redirectRoute('admin.checks.player', ['pubkey' => $player->pubkey], navigate: true);
+        $this->redirectRoute('admin.checks.player', ['pubkey' => $player->pubkey], navigate: false);
     }
 
     public function toggleAll(): void
