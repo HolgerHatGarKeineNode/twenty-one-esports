@@ -7,7 +7,8 @@
     The supply is the most that is paid out after the season, never money
     held now (user decision 2026-09-28).
 
-    $laterSeason: a season after the Pre-Season is live; $liveSeason: the live season or null.
+    $laterSeason: a season after the Pre-Season is live; $liveSeason: the live season or null; $bare: no disclosure of
+    its own, a part of the reference of a live season (plan "mining-page-clarity" P5).
 --}}
 @php
     use App\Support\Badges\BadgeCopy;
@@ -22,12 +23,18 @@
     $heading = $laterSeason ? __('How :season works', ['season' => BadgeCopy::season($liveSeason->slug)]) : __('How the Pre-Season works');
 @endphp
 
+@if ($bare ?? false)
+<div class="flex flex-col gap-3" data-test="season-rules">
+    <h3 id="how-h" class="m-0 text-[15px] font-bold" data-test="how-season">{{ $heading }}</h3>
+    <div class="flex flex-col gap-3">
+@else
 <details class="group rounded-lg bg-card" data-test="season-rules">
     <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 lg:px-6 [&::-webkit-details-marker]:hidden">
         <h2 id="how-h" class="pl-h2" data-test="how-season">{{ $heading }}</h2>
         <x-icon name="chevron-down" :size="18" class="shrink-0 text-ink-2 transition-transform duration-200 group-open:rotate-180" />
     </summary>
     <div class="flex flex-col gap-3 border-t border-hairline px-4 pt-4 pb-5 lg:px-6">
+@endif
         <p class="m-0 max-w-[75ch] text-[13px] leading-[1.6] text-ink-2">{{ __('From Block 0 on, every fair rated win mines a block, and every block earns sats. Rewards are paid once, after the season review.') }}</p>
         @if ($pot && $liveSeason === null)
             <p class="m-0 max-w-[75ch] text-[13px] leading-[1.6] text-ink-2" data-test="home-supply">{{ __('Up to :sats sats can be mined in the Pre-Season. That is the most the league pays out, once, after the season review; nothing is set aside before. Nothing of it carries over to a later season.', ['sats' => PreSeason::formatSats($pot)]) }}</p>
@@ -60,4 +67,8 @@
         <p class="pl-note">{{ $laterSeason ? __('Draws mine nothing. Admins can tune these limits during the season; a change only counts for blocks after it.') : __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }}</p>
         <p class="pl-note">{{ __('Casual games run before and after Block 0: casual Elo only, no rank, no reward.') }}</p>
     </div>
+@if ($bare ?? false)
+</div>
+@else
 </details>
+@endif

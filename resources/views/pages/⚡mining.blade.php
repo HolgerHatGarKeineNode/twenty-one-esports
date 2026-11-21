@@ -738,6 +738,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 </section>
             @endif
 
+            @if ($live)
+                {{-- Live (plan P5): the ladders as one chip row, each to its game's ladder. --}}
+                <section aria-labelledby="lad-h" class="rv-card flex min-w-0 flex-col gap-2 p-4" data-test="mining-ladders">
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1"><h2 id="lad-h" class="rv-h2">{{ __('Ladders') }}</h2><span class="rv-m">{{ __('rated and casual Elo per game and mode') }}</span></div>
+                    <x-ui.chips :label="__('Ladders')" test="mining-ladder" :items="collect($this->ladders)->map(fn (array $ladder): array => ['label' => $ladder['name'], 'href' => $ladder['href'], 'key' => $ladder['slug']])->values()->all()" />
+                </section>
+            @else
             <section aria-labelledby="lad-h" class="rv-card flex flex-col p-0" data-test="mining-ladders">
                 <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 p-4"><h2 id="lad-h" class="rv-h2">{{ __('Ladders') }}</h2><span class="rv-m">{{ $live ? __('rated and casual Elo per game and mode') : __('casual Elo per game and mode, until Block 0') }}</span></div>
                 <table class="rv-tb">
@@ -754,84 +761,11 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     </tbody>
                 </table>
             </section>
+            @endif
 
-            {{-- Advanced statistics (canvas NEU (Scope)): the halvings as bars and the rules in force, from the same chain. --}}
-            <details class="rv-adv" @unless ($live) open @endunless data-test="mining-rules">
-                @if ($live)
-                    <summary><x-icon name="chevron-down" :size="16" />{{ __('Rules and change log') }}</summary>
-                @else
-                    <summary><x-icon name="chevron-down" :size="16" />{{ __('Advanced statistics') }} <span class="rv-m font-normal max-sm:hidden">{{ $payKey ? __('Halvings of the season, :game', ['game' => $shortKey($payKey)]) : __('Halvings of the season') }}</span></summary>
-                @endif
-                <div class="flex flex-col gap-6 p-4">
-                    @if ($firstPay > 0 && ! $live)
-                        <figure class="m-0 flex flex-col gap-2">
-                            <figcaption class="text-[13px] text-ink-2">{{ __('Sats per win per era') }}</figcaption>
-                            <div class="flex items-end gap-2 border-b border-edge" role="img" aria-label="{{ collect($chain['schedule'])->map(fn ($row) => __('Era :era', ['era' => $row['era']]).': '.$sats((int) ($row['rewards'][$payKey] ?? 0)))->implode(', ') }}">
-                                @foreach ($chain['schedule'] as $row)
-                                    @php($pay = (int) ($row['rewards'][$payKey] ?? 0))
-                                    <div class="flex h-[150px] flex-1 flex-col items-center justify-end gap-1" aria-hidden="true">
-                                        <span class="rv-m text-ink-2 tabular-nums">{{ $sats($pay) }}</span>
-                                        <span class="block w-full bg-btc" style="height: {{ max(2, round(110 * $pay / $firstPay)) }}px"></span>
-                                        <span class="rv-m">E{{ $row['era'] }}</span>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </figure>
-                    @endif
-                    <table class="rv-tb">
-                        <thead><tr><th class="max-sm:whitespace-normal">{{ match (true) { $live => __('Rules in force now'), $ended => __('Rules at the season end'), default => __('Rules of the Pre-Season draft') } }}</th><th class="is-r">{{ __('Value') }}</th></tr></thead>
-                        <tbody>
-                            @foreach ([
-                                // Live: the weights are in the pay cards and the eras table already (plan P3).
-                                ...($live ? [] : [[__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => $shortKey((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')]]),
-                                [$shareTerm, ChainOverview::sharesLine($inForce->shares)],
-                                [__('Blocks per player a day'), collect($inForce->daily)->map(fn ($daily, $game) => ChainOverview::gameLabel((string) $game).' '.$daily)->implode(', ')],
-                                [__('Blocks per pairing'), __(':day a day, :season in the season', ['day' => $inForce->pairLimitPerDay, 'season' => $inForce->pairLimitPerSeason])],
-                                [__('Same trust circle'), $inForce->subtree > 100 ? __('rule off') : __('no block from :percent %', ['percent' => $inForce->subtree])],
-                                [__('Real chess game'), __('from :moves moves', ['moves' => $inForce->moves])],
-                            ] as [$term, $value])
-                                <tr class="max-sm:flex max-sm:flex-col max-sm:border-b max-sm:border-hairline max-sm:py-2">
-                                    <td class="whitespace-normal max-sm:h-auto max-sm:border-0 max-sm:p-0 max-sm:text-ink-2">{{ $term }}
-                                        @if ($term === $shareTerm && array_sum($inForce->shares) > 0)
-                                            {{-- The split as a bar in each game's colour (P53); the words carry the numbers, the colour never alone. --}}
-                                            <span class="mt-1.5 flex h-2 max-w-80 gap-0.5 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true" data-test="share-cap-bar">
-                                                @foreach ($inForce->shares as $shareGame => $share)
-                                                    <span @class(['h-full basis-0', match (true) { $shareGame === 'chess' => 'bg-chess', str_starts_with((string) $shareGame, 'rocket') => 'bg-rl', str_starts_with((string) $shareGame, 'ea-sports-fc') => 'bg-fc', $shareGame === 'age-of-empires-2' => 'bg-aoe', default => 'bg-ink-3' }]) style="flex-grow: {{ max(0, (float) $share) }}" title="{{ ChainOverview::gameLabel((string) $shareGame) }} {{ $share }} %"></span>
-                                                @endforeach
-                                                @if (array_sum($inForce->shares) < 100)
-                                                    <span class="h-full basis-0" style="flex-grow: {{ 100 - array_sum($inForce->shares) }}"></span>
-                                                @endif
-                                            </span>
-                                        @endif
-                                    </td>
-                                    <td class="is-r whitespace-normal max-sm:h-auto max-sm:border-0 max-sm:p-0 max-sm:text-left">{{ $value }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-
-                    @if ($hasChain)
-                        <div class="flex flex-col gap-2">
-                            <h3 class="rv-h3">{{ __('Change log') }}</h3>
-                            <ol class="m-0 flex list-none flex-col p-0" data-test="mining-changes">
-                                @foreach ($chain['changes'] as $change)
-                                    <li class="flex flex-col gap-1 border-b border-hairline py-2.5 text-[13px]">
-                                        <span class="flex flex-wrap gap-x-3"><b>{{ $date($change->effective_at) }}</b><span class="text-ink-2">{{ __('by :name', ['name' => $change->changedBy?->displayName() ?? substr($change->changed_by_pubkey, 0, 8)]) }}</span></span>
-                                        <span class="text-ink-2">{{ $change->reason }}</span>
-                                    </li>
-                                @endforeach
-                                <li class="flex flex-col gap-1 py-2.5 text-[13px]">
-                                    <span class="flex flex-wrap gap-x-3"><b>{{ $date($chain['season']->genesis_at) }}</b><span class="text-ink-2">{{ __('Block 0, released by :name', ['name' => $chain['season']->releasedBy?->displayName() ?? substr($chain['season']->released_by_pubkey, 0, 8)]) }}</span></span>
-                                    <span class="text-ink-2">{{ $chain['season']->genesis_message }}</span>
-                                </li>
-                            </ol>
-                            @if ($live)
-                                <p class="m-0 text-xs text-ink-3">{{ __('Any board member can adjust a limit during the season. A change counts only for blocks saved after it takes effect, never back.') }}</p>
-                            @endif
-                        </div>
-                    @endif
-                </div>
-            </details>
+            @unless ($live)
+                @include('partials.mining-rules')
+            @endunless
         </div>
 
         <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:gap-6">
@@ -918,24 +852,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         </div>
     </div>
 
-    @if ($hasChain)
-        <section aria-labelledby="review-h" class="rv-card flex flex-col gap-2 p-4 lg:p-6" data-test="mining-review">
-            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <h2 id="review-h" class="rv-h2">{{ __('Season review') }}</h2>
-                <span class="rv-m">{{ $live ? __('opens :when', ['when' => $date($chain['season']->ends_at)]) : __('mining stopped :when', ['when' => $date($chain['season']->ends_at)]) }}</span>
-            </div>
-            <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('At the season end every game is checked for farming. Each correction is published with its block and reason; voided sats go to the reserve. Then each player is paid once.') }}</p>
-            @if ($settlement !== null && $settlement['voids']->isNotEmpty())
-                <ol class="m-0 flex list-none flex-col p-0" data-test="mining-voids">
-                    @foreach ($settlement['voids'] as $void)
-                        <li class="flex flex-col gap-0.5 border-b border-hairline py-2 text-[13px] last:border-0">
-                            <b>{{ __('Block :height void', ['height' => $void->height]) }}</b>
-                            <span class="text-ink-2 [overflow-wrap:anywhere]">{{ $void->reason }}</span>
-                        </li>
-                    @endforeach
-                </ol>
-            @endif
-        </section>
+    @if ($hasChain && ! $live)
+        @include('partials.mining-review')
     @endif
 
     @if ($settlement !== null)
@@ -958,5 +876,21 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     @endif
 
     {{-- How the season works: when a rated win mines a block, the supply and the genesis message (moved here from home, P3). --}}
-    @include('partials.season-rules', ['laterSeason' => $live && $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live()])
+    @if ($live)
+        {{-- Reference, closed at the end (plan "mining-page-clarity" P5): how mining works, the rules in force, the change
+             log and the season review in one disclosure; "How mining works" in the hero opens it. --}}
+        <details id="season-reference" class="group min-w-0 rounded-lg bg-card" data-test="mining-reference">
+            <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 lg:px-6 [&::-webkit-details-marker]:hidden">
+                <h2 class="pl-h2">{{ __('How mining works, rules and change log') }}</h2>
+                <x-icon name="chevron-down" :size="18" class="shrink-0 text-ink-2 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <div class="flex min-w-0 flex-col gap-6 border-t border-hairline px-4 pt-4 pb-5 lg:px-6">
+                @include('partials.season-rules', ['laterSeason' => $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live(), 'bare' => true])
+                @include('partials.mining-rules')
+                @include('partials.mining-review')
+            </div>
+        </details>
+    @else
+        @include('partials.season-rules', ['laterSeason' => $live && $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live()])
+    @endif
 </div>

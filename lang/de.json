@@ -9502,9 +9502,10 @@
     "A win mines now, in sats per winner": "Ein Sieg schürft jetzt, in Sats je Sieger",
     "Mine blocks now": "Schürfen jetzt Blöcke",
     "Mine no block": "Schürfen keinen Block",
-    "Rules and change log": "Regeln und Änderungen",
     "Show all eras": "Alle Epochen zeigen",
     "sats per winner now; each game halves by what it mined": "Sats je Sieger, jetzt; jedes Spiel halbiert nach dem, was es geschürft hat",
     ":count block mined, pending the season review|:count blocks mined, pending the season review": ":count Block geschürft, wartet auf die Saisonprüfung|:count Blöcke geschürft, warten auf die Saisonprüfung",
-    "The newest blocks, scrolls sideways": "Die neuesten Blöcke, seitlich scrollbar"
+    "The newest blocks, scrolls sideways": "Die neuesten Blöcke, seitlich scrollbar",
+    "Rules in force": "Geltende Regeln",
+    "How mining works, rules and change log": "So funktioniert Mining: Regeln und Änderungen"
 }

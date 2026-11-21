@@ -42,3 +42,18 @@ test('from the first block on, the chain block shows the newest blocks as cubes 
         ->toContain('data-test="mining-strongest"')
         ->toContain('2 blocks mined, pending the season review');
 });
+
+test('live, how it works, the rules in force, the change log and the season review sit in one closed disclosure at the end, and the ladders are one chip row', function () {
+    keySeason();
+
+    $html = (string) $this->get(route('mining'))->assertOk()->getContent();
+    $reference = str($html)->after('<details id="season-reference"')->toString();
+
+    expect(substr_count($html, 'id="season-reference"'))->toBe(1)
+        ->and($html)->toMatch('/<details id="season-reference" class="[^"]*" data-test="mining-reference">/')
+        ->and($reference)->toContain('data-test="season-rules"')->toContain('data-test="mining-rules"')->toContain('data-test="mining-changes"')->toContain('data-test="mining-review"')
+        // Nothing of the page follows the reference but the footer.
+        ->and(str($reference)->after('</details>')->contains('data-test="mining-'))->toBeFalse()
+        ->and($html)->toContain('data-test="mining-ladder-chess"')
+        ->not->toContain('data-test="mining-ladder-link"');
+});
