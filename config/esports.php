@@ -952,9 +952,10 @@ return [
         // Impersonation hold (App\Support\FairPlay\Impersonation, plan "Profile standard and impersonation", P2): on
         // login and on every applied profile change, an account whose name reads like (confusables folded, at least 3
         // characters) or whose picture URL equals that of an account with precedence is held from new rated play until
-        // an admin decided on /admin/checks. Off by default: off, nothing is detected, written or read.
+        // an admin decided on /admin/checks. On by default since 2026-11-21 (prod count that day: 0 accounts shared a
+        // name key or picture). Off, nothing is detected, written or read.
         'impersonation' => [
-            'enabled' => (bool) env('ESPORTS_IMPERSONATION_HOLD', false),
+            'enabled' => (bool) env('ESPORTS_IMPERSONATION_HOLD', true),
         ],
 
         'checks' => [
