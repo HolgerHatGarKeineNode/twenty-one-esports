@@ -144,6 +144,8 @@ test('before trust ranks are computed the trust chip waits instead of naming a r
 });
 
 test('the chess blocks of today count the viewer\'s own blocks against the daily limit', function () {
+    // Midday UTC: the season opens an hour before now, so its wins fall on the same UTC day whenever the suite runs.
+    $this->travelTo(now()->utc()->setTime(12, 0));
     $season = keySeason();
     $this->travelTo($season->genesis_at->copy()->addHour());
     keyWins($season, ['chess/blitz', 'chess/blitz']);

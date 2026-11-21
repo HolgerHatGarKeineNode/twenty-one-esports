@@ -416,13 +416,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         </section>
     @endif
 
-    <section aria-label="{{ __('Chain stats') }}" class="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4" data-test="mining-stats">
+    <section aria-label="{{ __('Chain stats') }}" @class(['grid grid-cols-2 gap-3 lg:gap-4', 'lg:grid-cols-4' => $live, 'lg:grid-cols-5' => ! $live]) data-test="mining-stats">
         @php
             $minedOf = $hasChain ? __(':percent % of :supply', ['percent' => number_format($chain['mined'] / max(1, $chain['supply']) * 100, 1), 'supply' => $sats($chain['supply'])]) : '';
             $payLabel = $payKey ? __(':game pays', ['game' => $shortKey($payKey)]) : __('A win pays');
             $stats = match (true) {
+                // Live: no "Eras" tile, every pay card carries its game's era (plan "mining-page-clarity" P2/P5, 390 px height).
                 $live => [
-                    [__('Eras'), (string) $chain['season']->eras, __('each game halves by what it mined')],
                     [__('Mined'), $sats($chain['mined']), $minedOf],
                     [__('Left to mine'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
                     [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
@@ -454,7 +454,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             @php
                 [$label, $value, $sub] = $stat;
             @endphp
-            <div @class(['rv-card flex min-w-0 flex-col gap-1 p-4', 'col-span-2 lg:col-span-1' => $loop->last]) @isset($stat[3]) data-test="{{ $stat[3] }}" @endisset>
+            <div @class(['rv-card flex min-w-0 flex-col gap-1 p-4', 'col-span-2 lg:col-span-1' => $loop->last && $loop->count % 2 === 1]) @isset($stat[3]) data-test="{{ $stat[3] }}" @endisset>
                 <span class="rv-m">{{ $label }}</span>
                 <b class="font-display text-[22px] leading-tight lg:text-[26px]">{{ $value }}</b>
                 <span class="rv-m">{{ $sub }}</span>
@@ -473,19 +473,17 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     continue;
                 }
                 $chips = [];
-                $covered = [];
                 foreach ($key['modes'] as $weightKey => $mode) {
                     if (! ChainOverview::mines((string) $weightKey) || $mode['pays'] <= 0) {
                         continue;
                     }
                     [$modeGame, $modeName] = explode('/', (string) $weightKey, 2);
-                    $covered[$modeGame] = GameNames::game($modeGame);
                     $label = $modeGame === 'chess' ? \App\Support\Chess\ChessModes::short($modeName) : \Illuminate\Support\Str::ucfirst((string) preg_replace('/\s+\d+\+\d+$/', '', GameNames::mode($modeGame, $modeName)));
                     $chips[$modeName.'|'.$mode['pays']] ??= ['label' => $label, 'pays' => (int) $mode['pays'], 'keys' => []];
                     $chips[$modeName.'|'.$mode['pays']]['keys'][] = (string) $weightKey;
                 }
                 usort($chips, fn (array $a, array $b): int => $a['pays'] <=> $b['pays']);
-                $payCards[] = ['key' => $key, 'chips' => $chips, 'games' => array_values($covered)];
+                $payCards[] = ['key' => $key, 'chips' => $chips];
             }
             // Which games mine a block now and which do not (casual and own-copy games): the registry's list entries.
             $mineGames = [[], []];
@@ -493,7 +491,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 $members = $registry->covered($listedSlug);
                 $minesNow = collect(array_keys($inForce->weights))->contains(fn (string $weightKey): bool => in_array(explode('/', $weightKey, 2)[0], $members, true)
                     && ChainOverview::mines($weightKey) && ($chain['keys'][$inForce->shareKey(explode('/', $weightKey, 2)[0])]['era'] ?? null) !== null);
-                $mineGames[$minesNow ? 0 : 1][] = $registry->listedName($listedSlug);
+                $mineGames[$minesNow ? 0 : 1][] = __($registry->listedName($listedSlug));
             }
         @endphp
         <section aria-labelledby="eras-h" class="flex min-w-0 flex-col gap-3" data-test="mining-keys">
@@ -504,29 +502,26 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             <div class="grid grid-cols-1 gap-3 lg:grid-cols-[repeat(auto-fit,minmax(300px,1fr))] lg:gap-4" data-test="key-halvings">
                 @foreach ($payCards as $card)
                     @php($key = $card['key'])
-                    <article class="rv-card flex min-w-0 flex-col gap-3 p-4" data-test="key-halving" data-key="{{ $key['key'] }}" data-era="{{ $key['era'] ?? 'closed' }}">
+                    <article class="rv-card flex min-w-0 flex-col gap-2 p-4" data-test="key-halving" data-key="{{ $key['key'] }}" data-era="{{ $key['era'] ?? 'closed' }}">
                         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                             <h3 class="m-0 text-[16px] font-bold">{{ ChainOverview::gameLabel($key['key']) }}</h3>
                             <span class="rv-tag is-btc" data-test="key-era">{{ $key['closed'] ? __('mined out') : __('Era :era of :eras', ['era' => $key['era'], 'eras' => $key['eras']]) }}</span>
                         </div>
-                        <div class="flex flex-col gap-1">
-                            <span class="block h-1 w-full overflow-hidden rounded-[2px] bg-raised" aria-hidden="true">
+                        <div class="flex items-center gap-3">
+                            <span class="block h-1 min-w-0 grow overflow-hidden rounded-[2px] bg-raised" aria-hidden="true">
                                 <span class="block h-full bg-btc" style="width: {{ $key['pot'] > 0 ? min(100, round(100 * $key['mined'] / $key['pot'], 2)) : 0 }}%"></span>
                             </span>
-                            <span class="rv-m tabular-nums" data-test="key-mined">{{ __(':mined of :pot sats mined', ['mined' => $sats($key['mined']), 'pot' => $sats($key['pot'])]) }}</span>
+                            <span class="rv-m shrink-0 tabular-nums" data-test="key-mined">{{ __(':mined of :pot sats mined', ['mined' => $sats($key['mined']), 'pot' => $sats($key['pot'])]) }}</span>
                         </div>
                         @if ($card['chips'] !== [])
-                            <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('A win mines now, in sats per winner') }}" data-test="key-pays">
+                            <ul class="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="{{ __('A win mines now, in sats per winner') }}" data-test="key-pays">
                                 @foreach ($card['chips'] as $chip)
-                                    <li class="inline-flex h-8 items-center gap-2 rounded-[4px] border border-line px-2.5 text-[13px] whitespace-nowrap" data-test="pay-chip" data-keys="{{ implode(',', $chip['keys']) }}" data-pays="{{ $chip['pays'] }}"
+                                    <li class="inline-flex h-7 items-center gap-2 rounded-[4px] border border-line px-2.5 text-[13px] whitespace-nowrap" data-test="pay-chip" data-keys="{{ implode(',', $chip['keys']) }}" data-pays="{{ $chip['pays'] }}"
                                         @if (count($chip['keys']) > 1) title="{{ collect($chip['keys'])->map(fn (string $chipKey): string => ChainOverview::keyLabel($chipKey))->implode(', ') }}" @endif>
                                         <span class="text-ink-2">{{ $chip['label'] }}</span> <b class="font-display text-btc-hi tabular-nums">{{ $sats($chip['pays']) }}</b>
                                     </li>
                                 @endforeach
                             </ul>
-                        @endif
-                        @if (count($card['games']) > 1)
-                            <span class="rv-m">{{ implode(', ', $card['games']) }}</span>
                         @endif
                         <span @class(['text-[13px] tabular-nums', 'text-btc-hi' => ! $key['closed'], 'text-ink-2' => $key['closed']]) data-test="key-next-halving">{{ ChainOverview::halvingLine($key) }}</span>
                     </article>
@@ -824,27 +819,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 @endif
             </section>
 
-            @if ($hasChain)
-                <section aria-labelledby="payouts-h" class="rv-card flex flex-col gap-2 p-4" data-test="mining-payouts">
-                    <h2 id="payouts-h" class="rv-h2">{{ __('Payouts') }}</h2>
-                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Nobody is paid during the season. After the season review each player is paid once, to their Lightning address.') }}</p>
-                    <dl class="m-0 flex flex-col text-[13px]">
-                        @foreach ([
-                            [__('Season end'), $date($chain['season']->ends_at)],
-                            ...match (true) {
-                                $settlement === null => [[__('Mined so far, paid after the review'), __(':sats sats, :players', ['sats' => $sats($chain['mined']), 'players' => trans_choice(':count player|:count players', $chain['miner_count'])]), 'mined']],
-                                ! $settlement['approved'] => [[__('Waiting for the review, corrections may still lower it'), __(':sats sats, :players', ['sats' => $sats($settlement['owed']), 'players' => trans_choice(':count player|:count players', $settlement['owed_players'])]), 'review']],
-                                default => [
-                                    [__('Approved to pay'), __(':sats sats, :players', ['sats' => $sats($settlement['owed']), 'players' => trans_choice(':count player|:count players', $settlement['owed_players'])]), 'approved'],
-                                    [__('Paid so far'), __(':sats sats, :players', ['sats' => $sats($settlement['paid_sats']), 'players' => trans_choice(':count player|:count players', $settlement['paid']->count())]), 'paid'],
-                                ],
-                            },
-                            [__('Without a valid address'), __('the sats wait :days days for a claim, then go to the reserve', ['days' => intdiv($chain['season']->claim_seconds, 86400)])],
-                        ] as $item)
-                            <div class="flex flex-col gap-0.5 border-b border-hairline py-2.5 last:border-0" @isset($item[2]) data-test="payouts-{{ $item[2] }}" @endisset><dt class="text-xs text-ink-2">{{ $item[0] }}</dt><dd class="m-0">{{ $item[1] }}</dd></div>
-                        @endforeach
-                    </dl>
-                </section>
+            @if ($hasChain && ! $live)
+                @include('partials.mining-payouts')
             @endif
 
             {{-- P45, rule R7: the season chain on Nostr (its genesis), the reserve's zap QR and a follow, one line at the end. --}}
@@ -888,6 +864,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 @include('partials.season-rules', ['laterSeason' => $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live(), 'bare' => true])
                 @include('partials.mining-rules')
                 @include('partials.mining-review')
+                @include('partials.mining-payouts')
             </div>
         </details>
     @else

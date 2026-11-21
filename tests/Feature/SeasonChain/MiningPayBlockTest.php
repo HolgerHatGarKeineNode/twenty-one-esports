@@ -55,4 +55,10 @@ test('live, the halving bar chart and the weights row are gone, the era table is
         ->toContain('data-test="games-mine"')
         ->and(trim((string) preg_replace('/\s+/', ' ', strip_tags(str($html)->after('data-test="games-mine"')->before('</div>')->toString()))))
         ->toBe('> Mine blocks now Chess Blockli');
+
+    // The names are the page's language, as in the cards ("Schach", not the registry's "Chess").
+    $german = (string) $this->get(route('mining', ['lang' => 'de']))->assertOk()->getContent();
+
+    expect(trim((string) preg_replace('/\s+/', ' ', strip_tags(str($german)->after('data-test="games-mine"')->before('</div>')->toString()))))
+        ->toBe('> Schürfen jetzt Blöcke Schach Blockli');
 });

@@ -158,7 +158,7 @@ test('in German an admin reads chess in era 2 and the board games in era 1 on /m
     $mining = array_column($read['mining']['rows'], null, 0);
 
     expect(array_map(fn (array $row): string => $row[1], $mining))->toBe(['chess' => '2', 'board-games' => '1'])
-        ->and($mining['chess'][2])->toContain('Epoche 2 von 6')->toContain('Schach Blitz 1.050')
+        ->and($mining['chess'][2])->toContain('Epoche 2 von 6')->toContain('Blitz 1.050')
         ->and($mining['board-games'][2])->toContain('Epoche 1 von 6')->toContain('2.100');
 
     // The start page: both games are there with their own reward (the phone names the big tag's game above the lines).
