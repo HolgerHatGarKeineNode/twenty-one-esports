@@ -96,6 +96,8 @@
         <!-- The tests keep rated chess off unless a test opens it: the config default is on since Season 1. -->
         <env name="ESPORTS_RATED_CHESS" value="false" force="true"/>
         <env name="ESPORTS_IMPERSONATION_HOLD" value="false" force="true"/>
+        <env name="ESPORTS_PROFILE_STANDARD" value="false" force="true"/>
+        <env name="ESPORTS_PROFILE_STANDARD_SINCE" value="" force="true"/>
         <!-- A prod-like .env with TV_COMMENTARY=true put the radio director into every stream daemon test: a slot with nothing to say holds 15 s (tv.commentary.scenes.silent_min_scene_seconds), so TwentyOneStreamTest went red at any hour (2026-10-16). Tests that need the commentary switch it on with config(). -->
         <env name="TV_COMMENTARY" value="false" force="true"/>
         <!-- The text provider the tests assume (a workstation .env says opencode; 2026-10-18 it turned TalkShowActsTest red). -->
