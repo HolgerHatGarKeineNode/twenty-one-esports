@@ -133,6 +133,40 @@ test('the login checks the account: a fresh key logging in with a look-alike pro
     expect(ImpersonationHold::query()->sole()->only(['pubkey', 'matched_pubkey']))->toBe(['pubkey' => $signer->pubkey, 'matched_pubkey' => $original->pubkey]);
 });
 
+test('the login also checks an account whose cached profile did not change, so accounts known before the switch went on are caught', function () {
+    $original = ihOriginal();
+    $signer = new TestSigner;
+    User::factory()->withPubkey($signer->pubkey)->create(['name' => 'Odel1', 'picture' => null, 'created_at' => now()->subDay()]);
+    expect(ImpersonationHold::query()->count())->toBe(0);
+    $challenge = $this->postJson(route('auth.nostr.challenge'))->assertOk()->json('challenge');
+
+    $this->postJson(route('auth.nostr.login'), ['event' => $signer->loginEvent($challenge)])->assertOk();
+
+    expect(ImpersonationHold::query()->sole()->only(['pubkey', 'matched_pubkey']))->toBe(['pubkey' => $signer->pubkey, 'matched_pubkey' => $original->pubkey]);
+});
+
+test('a name in CJK letters gives a valid UTF-8 key and is held like any other, and a failing check never blocks the login', function () {
+    expect(mb_check_encoding(Impersonation::nameKey('ニッキー'), 'UTF-8'))->toBeTrue()
+        ->and(Impersonation::nameKey('ニッキー'))->toBe('ニッキー');
+
+    $original = ihOriginal(['name' => 'ニッキー', 'picture' => null]);
+    $fresh = ihFresh(['name' => 'ニッキー']);
+    expect(ImpersonationHold::query()->sole()->only(['pubkey', 'matched_pubkey', 'name_skeleton']))->toBe(['pubkey' => $fresh->pubkey, 'matched_pubkey' => $original->pubkey, 'name_skeleton' => 'ニッキー']);
+
+    ImpersonationHold::query()->delete();
+    DB::listen(function ($query): void {
+        if (str_contains($query->sql, 'impersonation_holds')) {
+            throw new RuntimeException('detection broke');
+        }
+    });
+    $signer = new TestSigner;
+    User::factory()->withPubkey($signer->pubkey)->create(['name' => 'ニッキー', 'picture' => null, 'created_at' => now()->subHour()]);
+    $challenge = $this->postJson(route('auth.nostr.challenge'))->assertOk()->json('challenge');
+
+    $this->postJson(route('auth.nostr.login'), ['event' => $signer->loginEvent($challenge)])->assertOk();
+    $this->assertAuthenticated();
+});
+
 test('no hold for the account itself, an account linked to it, a name shorter than three letters as it reads, or a different name', function (Closure $arrange) {
     $original = ihOriginal(['picture' => null]);
     $arrange($original);
@@ -384,6 +418,19 @@ test('a released match is not raised again for the same name and picture, but a 
 
     ProfileCache::acceptEvents([ihProfile($signer, ['name' => '0dell', 'picture' => 'https://example.com/odell.png'], now()->getTimestamp() - 10)]);
     expect(ImpersonationHold::query()->open()->sole()->only(['matched_pubkey', 'matched']))->toBe(['matched_pubkey' => $original->pubkey, 'matched' => 'both']);
+});
+
+test('a bar ends the hold: the next check raises no new hold while the bar runs, and raises it again once the bar ended', function () {
+    ihOriginal();
+    $fresh = ihFresh(['name' => 'Odell']);
+    app(Impersonation::class)->bar(ihAdmin(), ImpersonationHold::query()->sole(), 'Copies Odell', now()->addDays(3)->toImmutable());
+
+    Impersonation::check($fresh->refresh());
+    expect(ImpersonationHold::query()->open()->count())->toBe(0);
+
+    $this->travel(4)->days();
+    Impersonation::check($fresh->refresh());
+    expect(ImpersonationHold::query()->open()->where('pubkey', $fresh->pubkey)->count())->toBe(1);
 });
 
 test('the decision page counts impersonation reports against the held account only from accounts ranked 50 or more, each account once', function () {

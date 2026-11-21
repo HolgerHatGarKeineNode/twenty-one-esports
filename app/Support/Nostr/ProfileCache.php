@@ -173,8 +173,9 @@ final class ProfileCache
         self::renameEntries($user, $previousName);
 
         // A new name or picture is compared with the other accounts (impersonation hold; nothing runs while it is off).
+        // A failing check never aborts the profile refresh (or a batch of them): it is reported, the next change checks again.
         if ($user->wasChanged(['name', 'picture'])) {
-            Impersonation::check($user);
+            rescue(fn () => Impersonation::check($user));
         }
 
         return true;

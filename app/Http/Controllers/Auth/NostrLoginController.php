@@ -75,7 +75,8 @@ class NostrLoginController extends Controller
 
         // The impersonation check on login; a changed name or picture was checked by the profile cache already.
         if (! $user->wasChanged(['name', 'picture'])) {
-            Impersonation::check($user);
+            // A failing check never blocks the login: it is reported, and the next login or profile change checks again.
+            rescue(fn () => Impersonation::check($user));
         }
 
         // After the response is sent: a slow or unreachable Verein API must

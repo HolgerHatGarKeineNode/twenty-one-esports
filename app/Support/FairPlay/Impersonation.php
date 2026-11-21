@@ -3,11 +3,11 @@
 namespace App\Support\FairPlay;
 
 use App\Models\AccountLink;
+use App\Models\FairPlayBar;
 use App\Models\ImpersonationHold;
 use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\User;
-use App\Support\Nostr\Nip05Names;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustJob;
@@ -104,7 +104,14 @@ final class Impersonation
         $name = (string) preg_replace('/\p{Mn}+/u', '', (string) (Normalizer::normalize($name, Normalizer::FORM_D) ?: $name));
         $name = (string) preg_replace('/[^\p{L}\p{N}]+/u', '', $name);
 
-        return $name === '' ? '' : Nip05Names::skeleton($name);
+        if ($name === '') {
+            return '';
+        }
+
+        // The NIP-05 skeleton's folds, multibyte-safe: its byte-wise run collapse splits a CJK character into invalid UTF-8.
+        $name = strtr(str_replace('rn', 'm', strtr($name, ['0' => 'o', '1' => 'i', '3' => 'e', '4' => 'a', '5' => 's', '7' => 't'])), ['l' => 'i']);
+
+        return (string) preg_replace('/(.)\1+/u', '$1', $name);
     }
 
     /** Whether this name key is long enough to be compared. */
@@ -182,8 +189,9 @@ final class Impersonation
             // One check at a time for this account: the holds below are read under the lock.
             User::query()->whereKey($user->id)->lockForUpdate()->first();
             $existing = ImpersonationHold::query()->where('pubkey', $user->pubkey)->whereIn('matched_pubkey', array_keys($matches))
-                ->where(fn ($query) => $query->whereNull('decided_at')->orWhere('decision', ImpersonationHold::RELEASED))
+                ->where(fn ($query) => $query->whereNull('decided_at')->orWhereIn('decision', [ImpersonationHold::RELEASED, ImpersonationHold::BARRED]))
                 ->get()->groupBy('matched_pubkey');
+            $barRunning = FairPlayBar::query()->running()->where('pubkey', $user->pubkey)->exists();
             $written = [];
 
             foreach ($matches as $matchedPubkey => $match) {
@@ -193,9 +201,15 @@ final class Impersonation
                     continue;
                 }
 
+                // Barred for this match and the bar still runs: the bar is the decision, no new hold until it ended.
+                if ($barRunning && $rows->contains(fn (ImpersonationHold $hold): bool => $hold->decision === ImpersonationHold::BARRED)) {
+                    continue;
+                }
+
                 // Released before: raised again only for what matches now and was not released for this very value.
-                $nameReleased = ! $match['name'] || $rows->contains(fn (ImpersonationHold $hold): bool => $hold->matchesName() && $hold->name_skeleton === $key);
-                $pictureReleased = ! $match['picture'] || $rows->contains(fn (ImpersonationHold $hold): bool => $hold->matchesPicture() && $hold->picture === $picture);
+                $released = $rows->filter(fn (ImpersonationHold $hold): bool => $hold->decision === ImpersonationHold::RELEASED);
+                $nameReleased = ! $match['name'] || $released->contains(fn (ImpersonationHold $hold): bool => $hold->matchesName() && $hold->name_skeleton === $key);
+                $pictureReleased = ! $match['picture'] || $released->contains(fn (ImpersonationHold $hold): bool => $hold->matchesPicture() && $hold->picture === $picture);
 
                 if ($nameReleased && $pictureReleased) {
                     continue;
