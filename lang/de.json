@@ -9623,7 +9623,7 @@
     "Held (counts once the check is on)": "Zurückgehalten (zählt, sobald die Prüfung an ist)",
     "Not barred": "Nicht gesperrt",
     "Known to us for fewer than :days days": "Uns seit weniger als :days Tagen bekannt",
-    "No checked NIP-05": "Keine geprüfte NIP-05",
+    "No NIP-05": "Keine NIP-05",
     "No profile picture": "Kein Profilbild",
     "Mark as fine": "Als unbedenklich markieren",
     "Ends every open hold of the account.": "Beendet jede offene Zurückhaltung des Kontos.",

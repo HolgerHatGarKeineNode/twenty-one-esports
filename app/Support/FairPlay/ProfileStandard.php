@@ -7,6 +7,7 @@ use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
 use App\Models\User;
 use App\Support\LeagueTime;
+use App\Support\Nostr\ProfileCache;
 use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,12 +21,16 @@ use Illuminate\Database\Eloquent\Builder;
  * - `known`: the account is known to the league for `known_days` days since
  *   its first login (`users.created_at`, written once by the Nostr login;
  *   never the Nostr `created_at`, which the sender sets freely);
- * - `nip05`: a NIP-05 the league checked (`nip05_verified_at`) or the
- *   league's own name (`nip05_name`); either counts;
+ * - `nip05`: a well-formed NIP-05 address in the cached profile (`nip05`,
+ *   which {@see ProfileCache} stores only when it reads as name@domain) or
+ *   the league's own name (`nip05_name`); either counts. Whether the address
+ *   resolves is deliberately not asked (user 2026-11-21: no list of verified
+ *   addresses to keep, the standard would become too strict to maintain);
  * - `profile`: a non-empty `name` and `picture` of the cached kind-0 profile.
  *
- * Players who already played rated in the live season before the switch-on
- * date are exempt from all three ({@see exempt()}). The standard is read by
+ * Verein members are exempt from all three (paid membership is a hard mark
+ * of its own, user 2026-11-21), and so are players who already played rated
+ * in the live season before the switch-on date ({@see exempt()}). The standard is read by
  * {@see FairPlay::barred()} as kind `standard`, so like every other kind it
  * refuses only new rated play: a match accepted before keeps its pinned gate.
  *
@@ -76,7 +81,7 @@ final class ProfileStandard
             $missing[] = self::KNOWN;
         }
 
-        if ($user->nip05_verified_at === null && trim((string) $user->nip05_name) === '') {
+        if (trim((string) $user->nip05) === '' && trim((string) $user->nip05_name) === '') {
             $missing[] = self::NIP05;
         }
 
@@ -115,7 +120,7 @@ final class ProfileStandard
         }
 
         $users = User::query()->whereIn('pubkey', $pubkeys)
-            ->get(['id', 'pubkey', 'name', 'picture', 'nip05_verified_at', 'nip05_name', 'created_at'])->keyBy('pubkey');
+            ->get(['id', 'pubkey', 'name', 'picture', 'nip05', 'nip05_name', 'created_at'])->keyBy('pubkey');
         $below = [];
 
         foreach ($pubkeys as $pubkey) {
@@ -131,9 +136,10 @@ final class ProfileStandard
     }
 
     /**
-     * The exempt players among these: who played a rated match in the live
-     * season before the switch-on date. Read from the two records of a rated
-     * result, never from a stored flag:
+     * The exempt players among these: Verein members (`users.is_member`),
+     * and who played a rated match in the live season before the switch-on
+     * date, read from the two records of a rated result, never from a stored
+     * flag:
      *
      * - a league attestation (`season_attestations`, every rated result of
      *   every game, Hyperbitcoinization tables and score windows included)
@@ -146,21 +152,25 @@ final class ProfileStandard
      * Without a switch-on date the cut-off is now: whoever has played rated in
      * the live season so far is exempt, so the standard bars only accounts that
      * have not played rated yet (set the date at go-live to freeze that set).
-     * Outside a season nobody is exempt.
+     * Outside a season only members are exempt.
      *
      * @param  list<string>  $pubkeys
      * @return list<string>
      */
     public static function exempt(array $pubkeys): array
     {
-        $season = $pubkeys === [] ? null : Seasons::live();
-
-        if ($season === null) {
+        if ($pubkeys === []) {
             return [];
         }
 
+        $exempt = array_fill_keys(array_map(strval(...), User::query()->whereIn('pubkey', $pubkeys)->where('is_member', true)->pluck('pubkey')->all()), true);
+        $season = Seasons::live();
+
+        if ($season === null) {
+            return array_values(array_intersect($pubkeys, array_keys($exempt)));
+        }
+
         $cutoff = self::since() ?? CarbonImmutable::now();
-        $exempt = [];
 
         $candidates = SeasonAttestation::query()->where('season_id', $season->id)->where('attested_at', '<', $cutoff)->whereNotNull('candidate')
             ->where(function (Builder $query) use ($pubkeys): void {

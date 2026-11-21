@@ -89,12 +89,29 @@ test('each hard mark alone bars rated play, and a player with all three passes',
 })->with([
     'known for 6 days only' => [['created_at' => now()->subDays(6)], 'known'],
     'no NIP-05' => [['nip05' => null, 'nip05_verified_at' => null], 'nip05'],
-    'NIP-05 named but never checked' => [['nip05_verified_at' => null], 'nip05'],
     'no picture' => [['picture' => null], 'profile'],
     'empty name' => [['name' => ' '], 'profile'],
 ]);
 
-test('the league\'s own NIP-05 name counts as much as a checked address', function () {
+test('a well-formed NIP-05 address counts without the league resolving it (user 2026-11-21)', function () {
+    expect(ProfileStandard::missing(psPlayer(['nip05' => 'ada@example.com', 'nip05_verified_at' => null])))->toBe([]);
+});
+
+test('Verein members are exempt from all three marks; a non-member with the same gaps is barred (user 2026-11-21)', function () {
+    $gaps = ['created_at' => now()->subDays(2), 'nip05' => null, 'nip05_verified_at' => null, 'picture' => null];
+    $member = psPlayer([...$gaps, 'is_member' => true]);
+    $guest = psPlayer($gaps);
+
+    expect(ProfileStandard::below([$member->pubkey, $guest->pubkey]))->toHaveKeys([$guest->pubkey])->not->toHaveKey($member->pubkey)
+        ->and(ProfileStandard::isExempt($member))->toBeTrue()
+        ->and(ProfileStandard::stepsFor($member))->toBe([]);
+
+    $this->season->update(['ends_at' => now()->subDay()]);
+
+    expect(ProfileStandard::exempt([$member->pubkey, $guest->pubkey]))->toBe([$member->pubkey]);
+});
+
+test('the league\'s own NIP-05 name counts as much as an address in the profile', function () {
     $own = psPlayer(['nip05' => null, 'nip05_verified_at' => null, 'nip05_name' => 'ada']);
 
     expect(ProfileStandard::missing($own))->toBe([])
@@ -170,7 +187,7 @@ test('a match accepted before the switch keeps its pinned gate: it is rated, whi
     config(['esports.fair_play.profile_standard.enabled' => true]);
 
     expect(app(RatedChess::class)->refusal($a, 'blitz'))->toStartWith('Before you can play rated:')
-        ->and(fn () => $queue->join(psPlayer(['nip05_verified_at' => null]), 'blitz', rated: true))->toThrow(ChessRuleViolation::class, 'Set a NIP-05 address');
+        ->and(fn () => $queue->join(psPlayer(['nip05' => null, 'nip05_verified_at' => null]), 'blitz', rated: true))->toThrow(ChessRuleViolation::class, 'Set a NIP-05 address');
 
     $service = app(ChessGameService::class);
     $service->move($game->refresh(), $game->white, 'e2e4');
@@ -189,7 +206,7 @@ test('the player reads only the missing steps, in English and German; another pl
         ->and(RatedTrustGate::message(RatedTrustGate::FAIR_PLAY, [psPlayer()->pubkey, $fresh->pubkey]))
         ->toBe('ada cannot play rated yet: the account does not meet the profile standard for rated play.');
 
-    $noAddress = psPlayer(['nip05_verified_at' => null]);
+    $noAddress = psPlayer(['nip05' => null, 'nip05_verified_at' => null]);
     app()->setLocale('de');
     $german = FairPlay::message($noAddress->pubkey, $noAddress);
 
@@ -198,7 +215,7 @@ test('the player reads only the missing steps, in English and German; another pl
 });
 
 test('the opponents page lists the missing steps with a link to the league\'s own NIP-05 name, and nothing once the standard is met', function () {
-    $short = psPlayer(['nip05_verified_at' => null, 'picture' => null]);
+    $short = psPlayer(['nip05' => null, 'nip05_verified_at' => null, 'picture' => null]);
 
     $this->actingAs($short)->get(route('settings.opponents'))->assertOk()
         ->assertSee('data-test="rated-standard-nip05"', false)

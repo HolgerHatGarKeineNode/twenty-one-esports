@@ -239,7 +239,7 @@ new #[Title('Account check')] #[Layout('layouts::app', ['section' => 'admin'])] 
     };
     $hard = [
         'known' => __('Known to us for fewer than :days days', ['days' => ProfileStandard::knownDays()]),
-        'nip05' => __('No checked NIP-05'),
+        'nip05' => __('No NIP-05'),
         // Which half is missing: the avatar beside the name is a generated one when there is no picture.
         'profile' => match (true) {
             trim((string) $player->name) === '' && trim((string) $player->picture) === '' => __('No name and no profile picture'),
