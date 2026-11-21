@@ -520,6 +520,8 @@
         --c: var(--color-ink-2);
         --c-top: color-mix(in srgb, var(--c) 45%, #fff);
         --c-side: color-mix(in srgb, var(--c) 55%, #000);
+        /* A block box wherever it sits: as an inline span inside a link it ignored its size and drew 0 x 0 (/mining). */
+        display: block;
         position: relative;
         width: 108px;
         height: 108px;

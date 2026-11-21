@@ -234,6 +234,9 @@ test('the reserve card shows the zap QR code inside the card at 375 and 1440 px,
 const SUPPLY_MEASURE = <<<'JS'
     () => {
         const plot = document.querySelector('[data-test=supply-plot]');
+        // In a live season the chart sits folded in the chain block (fix round 2026-11-21): open it as a reader does.
+        const folded = plot.closest('details');
+        if (folded) folded.open = true;
         plot.scrollIntoView({block: 'center'});
         const card = plot.closest('section').getBoundingClientRect();
         const p = plot.getBoundingClientRect();

@@ -136,6 +136,19 @@ test('a player without a mutual opponent sees a red opponents chip that links to
         ->and($hero['standing']['opponents'])->toBe(['bad', 'No mutual opponent Add one', route('settings.opponents')]);
 });
 
+test('a one-sided list is no mutual opponent: the chip counts only players who list each other', function () {
+    openSeason();
+    $anna = heroPlayer('anna');
+    $bert = heroPlayer('bert');
+    heroTrustRun([$anna[0]->pubkey => 80, $bert[0]->pubkey => 90]);
+    // Anna lists Bert, Bert never lists Anna.
+    $opponents = app(Opponents::class);
+    $opponents->add($anna[0], $bert[0], $anna[1]->signTemplates($opponents->prepareAdd($anna[0], $bert[0])));
+
+    expect(heroOf($anna[0])['standing']['opponents'])->toBe(['bad', 'No mutual opponent Add one', route('settings.opponents')])
+        ->and(heroOf($bert[0])['standing']['opponents'][1])->toBe('No mutual opponent Add one');
+});
+
 test('before trust ranks are computed the trust chip waits instead of naming a rank', function () {
     openSeason();
     [$anna] = heroPlayer('anna');
@@ -152,6 +165,18 @@ test('the chess blocks of today count the viewer\'s own blocks against the daily
     $winner = User::query()->where('pubkey', $season->attestations()->whereNotNull('height')->orderBy('height')->first()->winners()[0])->firstOrFail();
 
     expect(heroOf($winner)['standing']['today'])->toBe(['ok', 'Chess today 1 of 5 blocks', null]);
+});
+
+test('the chess blocks of yesterday do not count against today\'s limit', function () {
+    // Midday UTC, as above: the wins fall on one UTC day, the view is read the next day.
+    $this->travelTo(now()->utc()->setTime(12, 0));
+    $season = keySeason();
+    $this->travelTo($season->genesis_at->copy()->addHour());
+    keyWins($season, ['chess/blitz', 'chess/blitz']);
+    $winner = User::query()->where('pubkey', $season->attestations()->whereNotNull('height')->orderBy('height')->first()->winners()[0])->firstOrFail();
+    $this->travelTo(now()->utc()->addDay()->setTime(12, 0));
+
+    expect(heroOf($winner)['standing']['today'])->toBe(['ok', 'Chess today 0 of 5 blocks', null]);
 });
 
 test('the stat tile shows the cheapest to the dearest win now, from the same chain rows the stream slides read', function () {

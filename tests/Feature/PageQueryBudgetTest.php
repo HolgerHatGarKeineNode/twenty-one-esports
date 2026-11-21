@@ -11,9 +11,13 @@ use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
+use App\Models\TrustRank;
+use App\Models\TrustRun;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Navigation\ShellNavigation;
+use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\LazyLoadingViolationException;
@@ -214,8 +218,9 @@ const PAGE_BUDGETS = [
     'clans.index' => [8, 43],
     // +2 (plan "Refactor und Design-Revamp", P3): how the season works moved here from home (the rules in force, the draft).
     // +4 (P7, Season.dc.html): "gerade eben" under the head (HomeBoard::ticker(), the latest moves, results and runs).
-    // +4 for the player (plan "mining-page-clarity", P2): the viewer's standing in the live hero (trust rank, own opponent
-    // list, who lists them back, today's blocks), one query each whatever the number of opponents.
+    // +4 for the player (plan "mining-page-clarity", P2): the viewer's standing in the live hero. This world has no trust
+    // run, so the hero asks whether one exists and stops there; then the own opponent list, who lists them back and today's
+    // blocks, one query each whatever the number of opponents. With a trust run (production) see the budget below.
     'mining' => [23, 58],
     'games.index' => [5, 36],
     // +8 (plan "Refactor und Design-Revamp", P7, Mempool.dc.html): "gerade eben" (latest moves, results and checked runs,
@@ -326,6 +331,37 @@ test('a closed rapid ladder costs no more queries than an open one, on every pag
     expect($more)->toBe([])
         ->and($closed['dashboard'])->toBeLessThanOrEqual(PAGE_BUDGETS['dashboard'][1])
         ->and($closed['home'])->toBeLessThanOrEqual(PAGE_BUDGETS['home'][1]);
+});
+
+/*
+| /mining in production: a trust run exists, so the live hero reads the
+| viewer's trust rank against it (fix round 2026-11-21, review of plan
+| "mining-page-clarity"). The world of the budget above has no trust run and
+| takes the short "not computed yet" branch; this one takes the long one.
+*/
+/**
+ * /mining for the player once a trust run exists, measured 64 on 2026-11-21: the 58 of PAGE_BUDGETS plus the trust facts
+ * of the viewer (AnchoredTrustFacts: account_links, fair_play_bars, false_reports, users, hyper_seats) and the rank
+ * (trust_ranks), one query each whatever the season's size.
+ */
+const MINING_PLAYER_WITH_TRUST_RUN_BUDGET = 64;
+
+test('the live hero of /mining stays within its budget once a trust run exists', function () {
+    $this->travelTo(now()->setTime(12, 0));
+    $world = budgetWorld();
+    $trust = new TestSigner;
+    $anchors = NostrEvent::fromSigned(SignedEvent::fromInput($trust->sign(30000, [['d', 'esports/x/anchors'], ['alt', 'anchors']])));
+    $run = TrustRun::query()->create(['season_id' => Seasons::live()?->id, 'trust_pubkey' => $trust->pubkey, 'anchor_list_nostr_event_id' => $anchors->id,
+        'anchors' => 0, 'lists' => 0, 'ranked' => 1, 'published' => 1, 'computed_at' => now()]);
+    $assertion = NostrEvent::fromSigned(SignedEvent::fromInput($trust->sign(30382, [['d', $world['player']->pubkey], ['p', $world['player']->pubkey], ['rank', '80'], ['alt', 'rank']])));
+    TrustRank::query()->create(['pubkey' => $world['player']->pubkey, 'rank' => 80, 'raw' => 1.0, 'anchor_list_event_id' => $anchors->event_id,
+        'trust_run_id' => $run->id, 'nostr_event_id' => $assertion->id, 'event_id' => $assertion->event_id]);
+    $this->actingAs($world['player']);
+
+    $load = budgetLoad(route('mining'));
+
+    expect($load['html'])->toContain('data-test="standing-trust" data-state="ok"')
+        ->and($load['queries'])->toBeLessThanOrEqual(MINING_PLAYER_WITH_TRUST_RUN_BUDGET);
 });
 
 /*
