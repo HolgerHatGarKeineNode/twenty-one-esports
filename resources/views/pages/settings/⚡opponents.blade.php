@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\FairPlay\Impersonation;
 use App\Support\FairPlay\ProfileStandard;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\SeasonChain\OpponentListRefused;
@@ -111,6 +112,8 @@ new #[Title('Opponents')] class extends Component {
     $row = 'grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-baseline gap-x-2 py-0.5';
     // The profile standard of rated play: only the steps still missing, empty while it is off, met or the player exempt.
     $standardSteps = ProfileStandard::stepsFor($user);
+    // An impersonation hold (P2): the player reads only that the account is being checked, never why; it outranks the steps.
+    $held = Impersonation::held([$user->pubkey]) !== [];
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="opponent-settings"
@@ -131,20 +134,25 @@ new #[Title('Opponents')] class extends Component {
         <p class="m-0 max-w-[68ch] text-ink-3">{{ __('Your list is public on Nostr: anyone can see whom you listed. Every change is signed by you and published through the league.') }}</p>
     </section>
 
-    @if ($standardSteps !== [])
+    @if ($held || $standardSteps !== [])
         <section id="rated-standard" aria-labelledby="rs-h" class="flex scroll-mt-20 flex-col gap-3 rounded-lg bg-card px-4 py-5 text-[13px] leading-normal lg:px-6" data-test="rated-standard">
             <h2 id="rs-h" class="m-0 text-[15px] font-bold">{{ __('Your profile for rated play') }}</h2>
-            <p class="m-0 max-w-[68ch] text-ink-2">{{ __('Before you can play rated:') }}</p>
-            <ol class="m-0 flex max-w-[68ch] list-decimal flex-col gap-2 pl-5">
-                @foreach ($standardSteps as $step)
-                    <li data-test="rated-standard-{{ $step['key'] }}">
-                        <span>{{ $step['text'] }}</span>
-                        @if ($step['url'] !== null)
-                            <a href="{{ $step['url'] }}" @navigate($step['url']) class="flex min-h-11 w-fit items-center font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="rated-standard-link-{{ $step['key'] }}">{{ __('Set up your Nostr address') }}</a>
-                        @endif
-                    </li>
-                @endforeach
-            </ol>
+            @if ($held)
+                <p class="m-0 max-w-[68ch] text-ink" data-test="rated-held">{{ __('Your account is being checked. Rated play opens again once the check is done.') }}</p>
+            @endif
+            @if ($standardSteps !== [])
+                <p class="m-0 max-w-[68ch] text-ink-2">{{ __('Before you can play rated:') }}</p>
+                <ol class="m-0 flex max-w-[68ch] list-decimal flex-col gap-2 pl-5">
+                    @foreach ($standardSteps as $step)
+                        <li data-test="rated-standard-{{ $step['key'] }}">
+                            <span>{{ $step['text'] }}</span>
+                            @if ($step['url'] !== null)
+                                <a href="{{ $step['url'] }}" @navigate($step['url']) class="flex min-h-11 w-fit items-center font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="rated-standard-link-{{ $step['key'] }}">{{ __('Set up your Nostr address') }}</a>
+                            @endif
+                        </li>
+                    @endforeach
+                </ol>
+            @endif
             <p class="m-0 max-w-[68ch] text-ink-3">{{ __('Casual play stays open.') }}</p>
         </section>
     @endif

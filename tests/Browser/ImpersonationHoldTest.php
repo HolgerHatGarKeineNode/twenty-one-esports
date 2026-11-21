@@ -22,8 +22,9 @@ pest()->group('browser');
 | The impersonation hold (plan "Profile standard and impersonation", P2)
 |--------------------------------------------------------------------------
 |
-| The admin decision page with both profiles side by side, and the chess
-| lobby of the held player, whose Rated badge reads "account being checked".
+| The admin decision page with both profiles side by side, the chess lobby
+| of the held player, whose Rated badge reads "account being checked", and
+| the player's opponents page, which says only that the account is checked.
 | Each at 390 and 1440 px, in German and English: no horizontal overflow,
 | the block inside the viewport, every button and link at least 44 x 44 px,
 | no squeezed text, the console and every response clean (a thrown error as
@@ -166,7 +167,7 @@ test('the decision page shows both profiles side by side, and a release ends the
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
 });
 
-test('the held player\'s chess lobby badge reads "account being checked", not "barred", at 390 and 1440 in German and English', function () {
+test('the held player\'s chess lobby badge reads "account being checked", not "barred", and the opponents page says the account is being checked, at 390 and 1440 in German and English', function () {
     app()->bind(TrustFacts::class, TrustedFacts::class);
     config(['esports.chess.rated_queue' => true]);
     $league = new TestSigner;
@@ -188,6 +189,19 @@ test('the held player\'s chess lobby badge reads "account being checked", not "b
         foreach ([390, 1440] as $width) {
             ihMeasure($page, '#lobby-quick', $width, "{$locale} lobby");
             ihShot($page, "lobby-held-{$width}x900-{$locale}");
+        }
+
+        // The opponents page, where the player's state for rated play stands: only that the account is being checked.
+        $page->goto(ComputeUrl::from(route('settings.opponents', [], false)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=rated-held]") !== null && window.Alpine !== undefined', 10_000);
+        $notice = $page->evaluate('() => document.querySelector("[data-test=rated-standard]").innerText.replace(/\s+/g, " ")');
+        fwrite(STDERR, "\n[ih] {$locale} opponents notice: ".$notice."\n");
+        expect($notice)->toContain($locale === 'de' ? 'Dein Konto wird gerade geprüft.' : 'Your account is being checked.')
+            ->and(mb_strtolower($notice))->not->toContain('odell')->not->toContain('imperson')->not->toContain('gesicht')->not->toContain('face');
+
+        foreach ([390, 1440] as $width) {
+            ihMeasure($page, '[data-test=rated-standard]', $width, "{$locale} opponents");
+            ihShot($page, "opponents-held-{$width}x900-{$locale}");
         }
     }
 

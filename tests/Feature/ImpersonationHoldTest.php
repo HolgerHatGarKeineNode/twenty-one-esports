@@ -2,21 +2,33 @@
 
 use App\Models\AccountLink;
 use App\Models\Admin;
+use App\Models\Clan;
 use App\Models\FairPlayBar;
+use App\Models\HyperMatch;
 use App\Models\ImpersonationHold;
+use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Board\RatedBoard;
 use App\Support\Chess\RatedChess;
 use App\Support\FairPlay\FairPlay;
 use App\Support\FairPlay\Impersonation;
+use App\Support\Hyper\HyperLobby;
+use App\Support\Hyper\HyperRuleViolation;
 use App\Support\Nostr\ProfileCache;
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\TrustFacts;
+use App\Support\Series\ChallengeDraft;
+use App\Support\Series\SeriesRuleViolation;
+use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use Tests\Support\HyperOn;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -225,6 +237,72 @@ test('an open hold refuses new rated play with a sentence that names neither the
         ->assertSee('account being checked')
         ->assertDontSee('>barred<', false)
         ->assertDontSee('profile not ready');
+});
+
+test('every other place that offers rated play refuses a held player with the same sentence: the trust gate and its pin, a rated challenge and its accept, rated tables, the rated board queue; casual stays open', function () {
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    HyperOn::play();
+    NineMensMorrisOn::play();
+    config(['esports.board_games.rated_queue' => true]);
+    openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDays(10), 'ends_at' => now()->addDays(60)]);
+    ihOriginal();
+    $captain = ihFresh(['name' => 'Odell']);
+    $otherSigner = new TestSigner;
+    $other = User::factory()->withPubkey($otherSigner->pubkey)->create(['name' => 'Viewer', 'picture' => null]);
+    $own = __('Your account is being checked. Rated play opens again once the check is done. Casual play stays open.');
+    $gate = app(RatedTrustGate::class);
+    $series = app(SeriesService::class);
+    $lineup = fn (User $owner): Lineup => Lineup::factory()->game('rocket-league', '3v3')->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $owner->id])->id])->load('clan', 'seats.user');
+    $mine = $lineup($captain);
+    $theirs = $lineup($other);
+    $start = now()->addHour()->startOfMinute()->getTimestamp();
+    $draft = fn (bool $rated): ChallengeDraft => new ChallengeDraft($mine->id, $theirs->id, 3, $rated, [$start, $start + 3600], $start - 600, null);
+    $this->actingAs($captain);
+
+    expect(FairPlay::barred([$captain->pubkey])[$captain->pubkey]['kind'])->toBe('held')
+        ->and($gate->refusal([$captain->pubkey, $other->pubkey], [$captain->pubkey, $other->pubkey]))->toBe(RatedTrustGate::FAIR_PLAY)
+        ->and($gate->pin([$captain->pubkey, $other->pubkey], [$other->pubkey, $other->pubkey])->isEligible($captain->pubkey))->toBeFalse()
+        ->and(RatedTrustGate::message(RatedTrustGate::FAIR_PLAY, [$other->pubkey, $captain->pubkey]))->toBe($own)
+        ->and(fn () => $series->prepareChallenge($captain, $draft(true)))->toThrow(SeriesRuleViolation::class, $own)
+        ->and($series->prepareChallenge($captain, $draft(false))['templates'])->toBe([])
+        ->and(fn () => app(HyperLobby::class)->open($captain, 2, HyperMatch::LIVE, 0))->toThrow(HyperRuleViolation::class, $own)
+        ->and(app(RatedBoard::class)->refusal($captain, 'nine-mens-morris', 'correspondence'))->toBe($own);
+
+    // The challenge wizard's step 3 shows the sentence where rated would be offered.
+    Livewire::actingAs($captain)->test('pages::challenges.create')
+        ->call('next')->call('pickOpponent', $theirs->id)->call('next')->assertSet('step', 3)
+        ->assertSeeHtml('data-test="rated-fair-play"')->assertSee($own);
+
+    // A rated challenge sent to the player before the hold counted (switch off), answered once it counts.
+    config(['esports.fair_play.impersonation.enabled' => false]);
+    $incoming = new ChallengeDraft($theirs->id, $mine->id, 3, true, [$start, $start + 3600], $start - 600, null);
+    $sent = $series->challenge($other, $incoming, $otherSigner->signTemplates($series->prepareChallenge($other, $incoming)['templates']));
+    config(['esports.fair_play.impersonation.enabled' => true]);
+
+    expect(fn () => $series->prepareAnswer($sent, $captain, 'accepted', $start))->toThrow(SeriesRuleViolation::class, $own);
+
+    // Another captain reads only that the player cannot play rated now.
+    $this->actingAs($other);
+    expect(RatedTrustGate::message(RatedTrustGate::FAIR_PLAY, [$captain->pubkey]))->toBe('Odell cannot play rated at the moment.');
+});
+
+test('the opponents page tells a held player that the account is being checked, above any missing profile step, and drops it once released', function () {
+    config(['esports.fair_play.profile_standard.enabled' => true]);
+    ihOriginal();
+    $fresh = ihFresh(['name' => 'Odell']);
+    $notice = __('Your account is being checked. Rated play opens again once the check is done.');
+
+    // Held and below the standard (a day old, no NIP-05, no picture): the notice first, then the steps.
+    $html = Livewire::actingAs($fresh)->test('pages::settings.opponents')->assertSeeHtml('data-test="rated-held"')->assertSee($notice)->html();
+    expect(strpos($html, 'data-test="rated-held"'))->toBeLessThan(strpos($html, 'data-test="rated-standard-nip05"'))
+        ->and(mb_strtolower($html))->not->toContain('imperson')->not->toContain('gesicht');
+
+    app()->setLocale('de');
+    Livewire::actingAs($fresh)->test('pages::settings.opponents')->assertSee('Dein Konto wird gerade geprüft.');
+    app()->setLocale('en');
+
+    ImpersonationHold::query()->update(['decided_at' => now(), 'decision' => ImpersonationHold::RELEASED]);
+    Livewire::actingAs($fresh)->test('pages::settings.opponents')->assertDontSeeHtml('data-test="rated-held"')->assertSeeHtml('data-test="rated-standard-nip05"');
 });
 
 test('admins see the open hold on /admin/checks and both profiles side by side on its decision page; players get 403', function () {
