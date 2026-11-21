@@ -44,10 +44,11 @@ final class RatedChess
      * The refusal with its class, so a view can name the kind of reason in
      * a word: `season` (no season live), `later` (a running season without
      * this mode yet), `closed` (rated chess off, or trust ranks not computed
-     * yet), `barred` (fair play) or `trust` (below the trust minimum). Null
+     * yet), `barred` (fair play), `standard` (below the profile standard, no
+     * bar: the player can fix it) or `trust` (below the trust minimum). Null
      * while rated chess is open for this player in this mode.
      *
-     * @return array{kind: 'season'|'later'|'closed'|'barred'|'trust', message: string}|null
+     * @return array{kind: 'season'|'later'|'closed'|'barred'|'standard'|'trust', message: string}|null
      */
     public function reason(User $user, string $mode): ?array
     {
@@ -68,7 +69,9 @@ final class RatedChess
 
         // Fair play (P41): a linked second account or a lock after false reports; the message says until when.
         if (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
-            return ['kind' => 'barred', 'message' => $barred];
+            $standard = (FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null) === 'standard';
+
+            return ['kind' => $standard ? 'standard' : 'barred', 'message' => $barred];
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {

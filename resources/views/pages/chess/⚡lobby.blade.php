@@ -236,6 +236,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     'season' => __('from Block 0'),
                     'later' => __('opens later'),
                     'barred' => __('barred'),
+                    'standard' => __('profile not ready'),
                     'trust' => __('Trusted needed'),
                     'opponent' => __('opponent missing'),
                     default => __('not open yet'),
@@ -248,11 +249,13 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'href' => match ($reason['kind']) {
                     'login' => route('login'),
                     'trust', 'opponent' => route('settings.opponents'),
+                    'standard' => route('settings.opponents').'#rated-standard',
                     default => null,
                 },
                 'cta' => match ($reason['kind']) {
                     'login' => __('Log in'),
                     'trust', 'opponent' => __('Your opponents'),
+                    'standard' => __('What is missing'),
                     default => null,
                 },
             ];

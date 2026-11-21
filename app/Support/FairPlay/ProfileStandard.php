@@ -52,13 +52,14 @@ final class ProfileStandard
 
     /**
      * The switch-on date (`esports.fair_play.profile_standard.since`, read in
-     * the league's zone), or null when none is set.
+     * the league's zone and returned in UTC like the columns it is compared
+     * with), or null when none is set.
      */
     public static function since(): ?CarbonImmutable
     {
         $since = config('esports.fair_play.profile_standard.since');
 
-        return is_string($since) && trim($since) !== '' ? CarbonImmutable::parse($since, LeagueTime::zone()) : null;
+        return is_string($since) && trim($since) !== '' ? CarbonImmutable::parse($since, LeagueTime::zone())->utc() : null;
     }
 
     /**

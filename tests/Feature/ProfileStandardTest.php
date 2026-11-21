@@ -208,3 +208,53 @@ test('the opponents page lists the missing steps with a link to the league\'s ow
 
     $this->actingAs(psPlayer())->get(route('settings.opponents'))->assertOk()->assertDontSee('data-test="rated-standard"', false);
 });
+
+test('a pubkey without a user row lacks every mark and is barred', function () {
+    $pubkey = str_repeat('ab', 32);
+
+    expect(FairPlay::barred([$pubkey])[$pubkey] ?? null)->toMatchArray(['kind' => 'standard', 'until' => null]);
+});
+
+test('the exemption counts only the live season, results before the switch-on date and rating changes that were not reverted', function () {
+    config(['esports.fair_play.profile_standard.since' => now()->subDays(3)->toIso8601String()]);
+    $bare = ['nip05' => null, 'nip05_verified_at' => null];
+    [$otherSeason, $afterCutoff, $reverted, $opponent] = [psPlayer($bare), psPlayer($bare), psPlayer($bare), psPlayer()];
+
+    $earlier = openSeason(['slug' => 'season-0', 'genesis_at' => now()->subDays(90)->startOfSecond(), 'ends_at' => now()->subDays(40)->startOfSecond()]);
+    psAttested($earlier, $otherSeason, $opponent, 5);
+
+    $change = function (User $player, float $daysAgo, bool $isReverted): void {
+        $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => 'season-1', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id, 'user_id' => $player->id, 'rating' => 1000, 'results' => 1, 'draws' => 1]);
+        $row = RatingChange::query()->create(['rating_id' => $rating->id, 'source' => RatingChange::CHESS, 'source_id' => $player->id, 'score' => 0.5, 'before' => 1000, 'after' => 1000, 'delta' => 0, 'results_before' => 0]);
+        $row->forceFill(['created_at' => now()->subSeconds((int) round($daysAgo * 86400)), 'reverted_at' => $isReverted ? now() : null])->save();
+    };
+    $change($afterCutoff, 1, false);
+    $change($reverted, 5, true);
+
+    expect(array_keys(FairPlay::barred([$otherSeason->pubkey, $afterCutoff->pubkey, $reverted->pubkey])))
+        ->toEqualCanonicalizing([$otherSeason->pubkey, $afterCutoff->pubkey, $reverted->pubkey]);
+});
+
+test('the switch-on date is read in the league\'s zone: a result half an hour after local midnight does not exempt', function () {
+    $since = CarbonImmutable::parse('2026-12-01 00:00', LeagueTime::zone());
+    $this->travelTo($since->addDay());
+    $season = openSeason(['slug' => 'season-tz', 'genesis_at' => $since->subDays(30), 'ends_at' => $since->addDays(60)]);
+    config(['esports.fair_play.profile_standard.since' => '2026-12-01']);
+    [$late, $opponent] = [psPlayer(['nip05' => null, 'nip05_verified_at' => null, 'created_at' => $since->subDays(20)]), psPlayer()];
+    psAttested($season, $late, $opponent, 0);
+    SeasonAttestation::query()->where('season_id', $season->id)->update(['attested_at' => $since->addMinutes(30)->utc()]);
+
+    expect(ProfileStandard::since()?->equalTo($since))->toBeTrue()
+        ->and(ProfileStandard::isExempt($late))->toBeFalse();
+});
+
+test('the chess lobby names the profile standard, not a bar, and links to the missing steps', function () {
+    config(['esports.chess.rated_queue' => true]);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $fresh = psPlayer(['created_at' => now()->subDays(2), 'picture' => null]);
+
+    Livewire\Livewire::actingAs($fresh)->test('pages::chess.lobby')
+        ->assertSee('profile not ready')
+        ->assertSee(route('settings.opponents').'#rated-standard', false)
+        ->assertDontSee('>barred<', false);
+});
