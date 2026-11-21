@@ -9672,5 +9672,14 @@
     "No name in the profile": "Kein Name im Profil",
     "none (the avatar shown is generated)": "keins (das gezeigte Avatarbild ist erzeugt)",
     "Not an account check setting.": "Keine Einstellung der Kontoprüfung.",
-    "No scan instructions are saved yet. An admin adds them in the settings under “Account checks”.": "Es sind noch keine Scan-Anweisungen gespeichert. Ein Admin trägt sie in den Einstellungen unter „Kontoprüfung“ ein."
+    "No scan instructions are saved yet. An admin adds them in the settings under “Account checks”.": "Es sind noch keine Scan-Anweisungen gespeichert. Ein Admin trägt sie in den Einstellungen unter „Kontoprüfung“ ein.",
+    "Read the note on this request first, then confirm the accept.": "Lies zuerst den Hinweis bei dieser Anfrage und bestätige dann das Annehmen.",
+    ":name cannot play rated yet:": ":name kann noch nicht gewertet spielen:",
+    "This account is being checked.": "Dieses Konto wird gerade geprüft.",
+    "New here: an account plays rated from :days days after its first login, so from :time.": "Neu hier: Ein Konto spielt ab :days Tagen nach seiner ersten Anmeldung gewertet, also ab :time.",
+    "No NIP-05 address set.": "Keine NIP-05-Adresse festgelegt.",
+    "No name or no profile picture in the Nostr profile.": "Kein Name oder kein Profilbild im Nostr-Profil.",
+    "You can still accept. Rated games between you open only after that.": "Du kannst trotzdem annehmen. Gewertete Partien zwischen euch sind erst danach möglich.",
+    "Accept :name anyway?": ":name trotzdem annehmen?",
+    "Accept anyway": "Trotzdem annehmen"
 }

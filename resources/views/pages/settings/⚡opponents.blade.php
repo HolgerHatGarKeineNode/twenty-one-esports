@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\FairPlay\AcceptWarnings;
 use App\Support\FairPlay\Impersonation;
 use App\Support\FairPlay\ProfileStandard;
 use App\Support\Nostr\RejectedEvent;
@@ -21,9 +22,11 @@ use Livewire\Component;
  * games here, trust, clan, who of your opponents lists them) so a fake or a
  * bot can be told apart. Accept is the signed add of the player page
  * ({@see Opponents}); decline hides the request and stops notifications,
- * and "Declined" undoes it. A short explanation leads the page. No artboard
- * draws this tab; it uses the settings cards and the key/value rows of the
- * player page.
+ * and "Declined" undoes it. A requester below the profile standard or under
+ * an impersonation hold carries a warning, and accepting them then takes an
+ * explicit confirm step (P4, {@see AcceptWarnings}). A short explanation
+ * leads the page. No artboard draws this tab; it uses the settings cards and
+ * the key/value rows of the player page.
  */
 new #[Title('Opponents')] class extends Component {
     /**
@@ -43,6 +46,26 @@ new #[Title('Opponents')] class extends Component {
      * @return list<array<string, mixed>>|null
      */
     public function prepareAdd(string $pubkey, Opponents $opponents): ?array
+    {
+        $player = $this->player($pubkey);
+
+        // P4: a requester with a warning is accepted only through the confirm step, never in one click.
+        if (AcceptWarnings::for([$player]) !== []) {
+            $this->addError('opponents', __('Read the note on this request first, then confirm the accept.'));
+
+            return null;
+        }
+
+        return $this->refusable(fn () => $opponents->prepareAdd($this->user(), $player));
+    }
+
+    /**
+     * The accept after the member confirmed the warning on the request card
+     * ({@see AcceptWarnings}); signed and submitted like any other accept.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function prepareConfirmedAdd(string $pubkey, Opponents $opponents): ?array
     {
         return $this->refusable(fn () => $opponents->prepareAdd($this->user(), $this->player($pubkey)));
     }
@@ -108,7 +131,10 @@ new #[Title('Opponents')] class extends Component {
     $asking = array_values(array_filter($asking, fn (string $pubkey): bool => $players->has($pubkey)));
     $declined = array_values(array_filter($declined, fn (string $pubkey): bool => $players->has($pubkey)));
     // One batch for every card (P57 review: no queries per request).
-    $signals = $requests->signals($user, $players->filter(fn (User $player): bool => in_array($player->pubkey, $asking, true))->values());
+    $requesters = $players->filter(fn (User $player): bool => in_array($player->pubkey, $asking, true))->values();
+    $signals = $requests->signals($user, $requesters);
+    // P4: why rated play with a requester stays closed for now (missing hard marks, an open hold), batched like the facts.
+    $warnings = AcceptWarnings::for($requesters);
     $row = 'grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-baseline gap-x-2 py-0.5';
     // The profile standard of rated play: only the steps still missing, empty while it is off, met or the player exempt.
     $standardSteps = ProfileStandard::stepsFor($user);
@@ -172,8 +198,10 @@ new #[Title('Opponents')] class extends Component {
                             $player = $players->get($pubkey);
                             $name = $player->displayName();
                             $facts = $signals[$pubkey];
+                            $warning = $warnings[$pubkey] ?? null;
                         @endphp
-                        <li wire:key="request-{{ $pubkey }}" class="flex flex-col gap-3 rounded-md bg-well p-4 shadow-ring-hairline" data-test="opponent-request" data-pubkey="{{ $pubkey }}">
+                        <li wire:key="request-{{ $pubkey }}" class="flex flex-col gap-3 rounded-md bg-well p-4 shadow-ring-hairline" data-test="opponent-request" data-pubkey="{{ $pubkey }}"
+                            @if ($warning) x-data="{ confirming: false }" @endif>
                             <x-player-link :user="$player" class="flex min-h-11 min-w-0 items-center gap-3 self-start text-ink hover:text-ink">
                                 <x-avatar :user="$player" :size="40" class="shrink-0 rounded-md" /><b class="min-w-0 text-[15px] [overflow-wrap:anywhere]">{{ $name }}</b>
                             </x-player-link>
@@ -209,11 +237,52 @@ new #[Title('Opponents')] class extends Component {
                                 </p>
                             @endif
 
-                            <div class="flex flex-wrap items-center gap-2">
-                                <button type="button" x-on:click="run('prepareAdd', 'add', @js($pubkey))" x-bind:disabled="busy" data-test="opponent-request-accept" aria-label="{{ __('Accept :name as opponent', ['name' => $name]) }}"
-                                        class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-card px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70">
-                                    <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" />{{ __('Accept') }}
-                                </button>
+                            @if ($warning)
+                                {{-- P4: why rated play with them stays closed for now; a hold says only that the account is checked, never why. --}}
+                                <div class="flex max-w-[68ch] items-start gap-2 rounded-md bg-btc-tint px-3 py-2 text-[13px] leading-normal text-btc-hi" role="note" data-test="opponent-request-warning">
+                                    <x-icon name="alert" :size="16" class="mt-0.5 shrink-0" />
+                                    <div class="flex min-w-0 flex-col gap-1">
+                                        <p class="m-0 font-bold">{{ __(':name cannot play rated yet:', ['name' => $name]) }}</p>
+                                        <ul class="m-0 flex list-disc flex-col gap-1 pl-4">
+                                            @if ($warning['held'])
+                                                <li data-test="opponent-request-warning-held">{{ __('This account is being checked.') }}</li>
+                                            @endif
+                                            @foreach ($warning['missing'] as $mark)
+                                                <li data-test="opponent-request-warning-{{ $mark['key'] }}">{{ $mark['text'] }}</li>
+                                            @endforeach
+                                        </ul>
+                                        <p class="m-0">{{ __('You can still accept. Rated games between you open only after that.') }}</p>
+                                    </div>
+                                </div>
+                            @endif
+
+                            @if ($warning)
+                                {{-- Deferred: Accept only opens the confirm; nothing is signed before "Accept anyway" (R18, focus on the safe choice). --}}
+                                <div x-show="confirming" x-cloak class="flex flex-col gap-2 rounded-md border border-line p-3" role="group" aria-label="{{ __('Accept :name as opponent', ['name' => $name]) }}" data-test="opponent-request-confirm">
+                                    <p class="m-0 text-[13px] leading-normal text-ink">{{ __('Accept :name anyway?', ['name' => $name]) }}</p>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button type="button" x-on:click="run('prepareConfirmedAdd', 'add', @js($pubkey))" x-bind:disabled="busy" data-test="opponent-request-confirm-accept"
+                                                class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border border-line bg-card px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70">
+                                            <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" />{{ __('Accept anyway') }}
+                                        </button>
+                                        <button type="button" x-ref="cancelAccept" x-on:click="confirming = false; $nextTick(() => $refs.acceptButton.focus())" x-bind:disabled="busy" data-test="opponent-request-confirm-cancel"
+                                                class="inline-flex h-11 cursor-pointer items-center whitespace-nowrap rounded-md px-3 text-[13px] text-ink-2 hover:text-ink disabled:cursor-wait disabled:opacity-70">{{ __('Cancel') }}</button>
+                                    </div>
+                                </div>
+                            @endif
+
+                            <div class="flex flex-wrap items-center gap-2" @if ($warning) x-show="! confirming" @endif>
+                                @if ($warning)
+                                    <button type="button" x-ref="acceptButton" x-on:click="confirming = true; $nextTick(() => $refs.cancelAccept.focus())" x-bind:disabled="busy" x-bind:aria-expanded="confirming" data-test="opponent-request-accept" aria-label="{{ __('Accept :name as opponent', ['name' => $name]) }}"
+                                            class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-card px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70">
+                                        <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" />{{ __('Accept') }}
+                                    </button>
+                                @else
+                                    <button type="button" x-on:click="run('prepareAdd', 'add', @js($pubkey))" x-bind:disabled="busy" data-test="opponent-request-accept" aria-label="{{ __('Accept :name as opponent', ['name' => $name]) }}"
+                                            class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-card px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70">
+                                        <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" />{{ __('Accept') }}
+                                    </button>
+                                @endif
                                 <button type="button" wire:click="decline(@js($pubkey))" x-bind:disabled="busy" data-test="opponent-request-decline" aria-label="{{ __('Decline :name', ['name' => $name]) }}"
                                         class="inline-flex h-11 cursor-pointer items-center rounded-md px-3 text-[13px] text-ink-2 hover:text-ink disabled:cursor-wait disabled:opacity-70">{{ __('Decline') }}</button>
                                 <a href="{{ route('players.show', $player->npub) }}" class="ml-auto inline-flex h-11 items-center px-1 text-[13px] text-ink-2 hover:text-ink" data-test="opponent-request-profile">{{ __('Profile') }}</a>
