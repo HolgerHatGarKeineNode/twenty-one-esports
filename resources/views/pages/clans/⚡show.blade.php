@@ -521,7 +521,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @forelse ($openTeam as $teamMatch)
                     @php($theirSide = $this->clan->lineups->contains('id', $teamMatch->challenger_lineup_id) ? 'challenged' : 'challenger')
                     @php($cell = SeriesPresenter::score($teamMatch))
-                    <a href="{{ route('matches.show', $teamMatch) }}" class="tr grid h-11 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink xl:grid-cols-[96px_minmax(0,1fr)_120px_150px_160px] xl:gap-4" data-test="team-match-row">
+                    <a href="{{ route('matches.show', $teamMatch) }}" class="tr grid h-11 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink xl:grid-cols-[48px_minmax(0,1fr)_160px_150px_auto] xl:gap-4" data-test="team-match-row">
                         <span class="font-bold text-btc">{{ $teamMatch->label() }}</span>
                         <span class="flex min-w-0 items-center gap-2 whitespace-nowrap"><x-clan-tag :tag="$teamMatch->sideTag($theirSide)" size="sm" /><span class="truncate">{{ $teamMatch->sideName($theirSide) }}</span><span class="shrink-0 text-xs text-ink-3 xl:hidden" data-test="team-match-game">{{ GameNames::game($teamMatch->game) }}</span></span>
                         <span class="hidden truncate text-ink-2 xl:block" title="{{ GameNames::full($teamMatch->game, $teamMatch->mode) }}">{{ GameNames::game($teamMatch->game) }} · {{ trans_choice(':count board|:count boards', (int) $teamMatch->boards) }}</span>
