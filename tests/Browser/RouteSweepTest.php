@@ -10,6 +10,7 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\DisputeEvidence;
+use App\Models\ImpersonationHold;
 use App\Models\Lineup;
 use App\Models\PongMatch;
 use App\Models\RankBadge;
@@ -226,6 +227,9 @@ function sweepFixtures(): array
 
         // The generated avatar of that player's key.
         'pubkey' => fn (?User $user, array $made): Model => $made['npub'],
+
+        // A name hold on /admin/checks: admins open its check page, everyone else is refused like on every admin page.
+        'hold' => fn (?User $user, array $made): Model => ImpersonationHold::factory()->create(),
 
         // An open daily-chess invite link of another player (P6b): the guest
         // sweep gets the landing with the login, the member sweep "Ready to
