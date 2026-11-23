@@ -9,6 +9,9 @@ use App\Games\Blockspace;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\Go;
+use App\Games\Go13;
+use App\Games\Go19;
+use App\Games\Go9;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\ProofOfPong;
@@ -320,21 +323,29 @@ final class RulesPage
      * first-move window with its floor on a late start, board forfeit and
      * void, the team draw, friendlies and the pair limit; every number from
      * config (App\Support\Chess\ChessTeamMatches). Blockli plays them by the
-     * same rules while it is switched on (NIP rev. 9.25): one more sentence.
+     * same rules while it is switched on (NIP rev. 9.25): one more sentence;
+     * so does Go, in rapid on each size switched on (NIP rev. 9.28).
      *
      * @return Section
      */
     private static function teamMatches(): array
     {
         $lock = ChessTeamMatches::lockMinutes();
-        $blockli = in_array('rapid', app(GameRegistry::class)->teamMatchModes()[Blockli::SLUG] ?? [], true);
+        $teamModes = app(GameRegistry::class)->teamMatchModes();
+        $blockli = in_array('rapid', $teamModes[Blockli::SLUG] ?? [], true);
+        // Go (NIP rev. 9.28): a size switched on plays them in rapid, each size with its own lineup and ladder.
+        $go = collect([Go9::SLUG, Go13::SLUG, Go19::SLUG])->contains(fn (string $slug): bool => in_array('rapid', $teamModes[$slug] ?? [], true));
+        $mode = ['mode' => ChessModes::label('rapid')];
 
         return [
             'id' => 'clan-team-match',
             'title' => __('Clan team match'),
-            'lead' => $blockli
-                ? __('Two clans play chess or Blockli on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')])
-                : __('Two clans play chess on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')]),
+            'lead' => match (true) {
+                $blockli && $go => __('Two clans play chess, Blockli or Go on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', $mode),
+                $go => __('Two clans play chess or Go on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', $mode),
+                $blockli => __('Two clans play chess or Blockli on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', $mode),
+                default => __('Two clans play chess on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', $mode),
+            },
             'facts' => [
                 [__('Boards'), '2 / 3'],
                 [__('Lineup lock'), __(':time before the start', ['time' => self::minutes($lock)])],
@@ -352,6 +363,7 @@ final class RulesPage
                 __('Two clans play one rated team match per :time. Friendlies are not limited.', ['time' => self::minutes((int) config('esports.team_matches.rated_pair_days', 7) * 1440)]),
                 __('From the lock until the end the named players cannot start any other game.'),
                 ...($blockli ? [__('Blockli team matches follow the same rules with a Blockli rapid lineup: the boards are ordered by Blockli rapid Elo, the challenging clan has the first move on boards 1 and 3, and in a rated team match every board is a rated solo game on the Blockli rapid ladder.')] : []),
+                ...($go ? [__('Go team matches follow the same rules with one rapid lineup per board size: the boards are ordered by that size\'s rapid Elo, the challenging clan has the first move, Black, on boards 1 and 3, and in a rated team match every board is a rated solo game on that size\'s rapid ladder.')] : []),
             ],
             'links' => [[__('Clans'), route('clans.index')], [__('Matches'), route('matches.index', ['game' => 'team'])]],
         ];

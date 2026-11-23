@@ -64,14 +64,15 @@ order by rapid Elo, a lineup lock, board forfeits and friendly team matches, wit
 reactions, team chat and spectator poll on existing kinds, a season of its own (free-for-all points, 1v1 and team Elo)
 outside the ladders, and its result as a `2154` of its own shape, without a new kind; **revision 9.25** (2026-11-06):
 clan team matches in Blockli rapid, on the terms of the chess team matches of revision 9.22, without a new kind or
-tag). Not
+tag; **revision 9.28** (2026-11-23): the same clan team matches in Go rapid on each of its three board sizes, without a
+new kind or tag). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19, 9.20, 9.21, 9.22 and 9.25 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19, 9.20, 9.21, 9.22, 9.25 and 9.28 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -89,6 +90,8 @@ match: a board forfeit (`resolution` `forfeit`, its `winner`, no `elo`, no block
 revision-3 match on the blitz ladder; under revision 9.22 the same events name the rapid ladder and lineup.
 Revision 9.25 adds no shape either: a Blockli team match's challenge, answer and board attestations are those of a
 chess team match with `blockli` for `chess` in every `a`, without an `e` to a game record (a board game has none).
+Nor does revision 9.28: a Go team match's events are a Blockli team match's with `go-9`, `go-13` or `go-19` for
+`blockli`.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -188,6 +191,12 @@ runs Blockli. Blockli rapid keeps its ladder, its solo games and their attestati
 get no team match (a `2150` with `boards` on their ladders is refused, rule 11). No chess, other board game, Rocket
 League, EA Sports FC or Age of Empires II rule, ladder or event changes.
 
+The rules marked "rev. 9.28" give Go rapid on each board size (`go-9`, `go-13`, `go-19`) the clan team matches of
+revision 9.25, on the same terms. They apply to every Go team match whose challenge the league signs after it adopts
+revision 9.28, and only while the league runs that size. Go rapid keeps its ladders, its solo games and their
+attestations; blitz and correspondence Go get no team match (a `2150` with `boards` on their ladders is refused, rule
+11). No chess, Blockli, other board game, Rocket League, EA Sports FC or Age of Empires II rule, ladder or event changes.
+
 The rules marked "rev. 9.24" are a draft: they add Hyperbitcoinization, which no league runs yet (its switch is off). It
 has no ladder event and no block (a block only by rev. 9.26 and a season's `weight`), so no existing ladder,
 attestation, block, consensus rule or season parameter
@@ -279,6 +288,23 @@ for the game while the league has switched it on, and none otherwise.
   (correspondence), and a board game that is switched off has no weight. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
   season that began without the game is offered the same values as a proposal; nothing of a proposal is in force
   until the board saves it.
+
+### Changelog of revision 9.28 (2026-11-23)
+
+Clan team matches in Go, on each of its three board sizes, built on the Blockli team matches of revision 9.25 and
+through them on the chess ones of revision 9.22 (DerCaddy, 2026-11-23: „Go sollte auch als Mannschaftsspiel möglich
+sein!“, all three sizes in rapid). No new kind and no new tag; checked against the app's tests, not on a public relay,
+and without printed examples.
+
+- **Go rapid with boards** ([Game registry](#game-registry), [Go team matches](#go-team-matches-rev-928)): mode
+  `rapid` of `go-9`, `go-13` and `go-19` allows `boards` 2 or 3; Go blitz (9 x 9 only) and correspondence have no team
+  match. Each size is a game of its own, so a clan has one Go lineup per size (`<clan>/go-9/rapid`, ...), each only to
+  field team matches and without a rating of its own.
+- **The rules of revision 9.25**, read with the size: the board order by that size's rapid Elo, rated boards on that
+  size's rapid ladder, the pair limit per pair of lineups (Go team matches of two sizes never block each other).
+- **The challenger moves first on odd boards, with Black.** Go's first side is Black: the challenger has Black, the
+  first move, on boards 1 and 3; White's komi of 7.5 stays as in every Go game.
+- **Attestations and clan hashrate** as for a Blockli team match, on the size's rapid ladder.
 
 ### Changelog of revision 9.25 (2026-11-06)
 
@@ -1433,6 +1459,10 @@ Rev. 9.25: Blockli's mode `rapid` (`time_control` `600+5`, `rates` `player`) als
 rapid; a Blockli lineup (`<clan>/blockli/rapid`) exists only to field team matches, needs at least `boards` active
 players and has no rating of its own. See [Blockli team matches](#blockli-team-matches-rev-925).
 
+Rev. 9.28: Go's mode `rapid` on each size (`go-9` and `go-13` `600+5`, `go-19` `900+10`, `rates` `player`) also allows
+`boards` 2 or 3; a Go lineup (`<clan>/go-9/rapid`, ...) exists only to field team matches, needs at least `boards`
+active players and has no rating of its own. See [Go team matches](#go-team-matches-rev-928).
+
 ### Chess team matches (rev. 9.22)
 
 A clan team match is played in `rapid` only, on 2 or 3 boards at once, between two chess lineups
@@ -1493,6 +1523,19 @@ these readings:
   row, `resolution`, `winner` by side, `elo` for a rated result, the challenge's `match`. A board game has no game
   record (`64`), so no `e` names one; a whole-team forfeit or void names none either.
 - **Moves.** Blockli moves stay on the league server, as every board game's.
+
+### Go team matches (rev. 9.28)
+
+A clan team match in Go is played in `rapid` only, on 2 or 3 boards at once, between two Go lineups of the same board
+size (`<clan>/go-9/rapid`, `<clan>/go-13/rapid` or `<clan>/go-19/rapid`), by [Blockli team
+matches](#blockli-team-matches-rev-925) word for word, with `go-9`, `go-13` or `go-19` for `blockli` and these
+readings:
+
+- **Ladder and rating.** The challenge names `<size>/rapid/<season>` (for example `go-13/rapid/<season>`); the board
+  order at the lock follows that size's rapid Elo, never another size's.
+- **Sides.** The side that moves first is Black. The challenger side has Black on odd boards and White on even boards;
+  each board is an ordinary Go game of its size, komi included.
+- **Clocks.** Each board runs on its size's rapid time control: `600+5` on 9 x 9 and 13 x 13, `900+10` on 19 x 19.
 
 ### Board games (rev. 9.12)
 
@@ -7585,6 +7628,9 @@ record, and its post no `q`.
   repository, which was made for `halving` only; and whether the draft check should also hold the blocks of the
   earlier eras below their next bound, so that no block passes two bounds (today only the last era is bound, and
   the pot guard of rule 9 catches the rest).
+
+- **Revision 9.28 (Go team matches) prints no example.** Its events are a Blockli team match's with the Go size in the
+  ladder and lineup `a`; the app's tests check them, no relay round-trip was made.
 
 - **Revision 9.25 (Blockli team matches) prints no example.** Its events are a chess team match's with `blockli` in the
   ladder and lineup `a` and no record `e`; the app's tests check them, no relay round-trip was made.

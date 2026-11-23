@@ -23,7 +23,8 @@ final class Go19 extends Go
     public function modes(): array
     {
         return [
-            'rapid' => new GameMode('rapid', 'Rapid 15+10', 1, [], [], 'player', true, '900+10'),
+            // Rapid also plays clan team matches over 2 or 3 boards (NIP rev. 9.28): some 70 minutes at most.
+            'rapid' => new GameMode('rapid', 'Rapid 15+10', 1, [], [2, 3], 'player', true, '900+10'),
             'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', true, '1/86400'),
         ];
     }

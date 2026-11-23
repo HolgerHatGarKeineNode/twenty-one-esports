@@ -25,7 +25,8 @@ final class Go9 extends Go
         return [
             // Each its own rating pool and ladder, as Blockli's (go-9/blitz, go-9/rapid).
             'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3'),
-            'rapid' => new GameMode('rapid', 'Rapid 10+5', 1, [], [], 'player', true, '600+5'),
+            // Rapid also plays clan team matches over 2 or 3 boards, as chess and Blockli rapid (NIP rev. 9.28).
+            'rapid' => new GameMode('rapid', 'Rapid 10+5', 1, [], [2, 3], 'player', true, '600+5'),
             'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', true, '1/86400'),
         ];
     }
