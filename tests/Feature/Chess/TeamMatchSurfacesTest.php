@@ -116,7 +116,7 @@ test('the clan page shows the public rapid lineup, the next team match and a tea
         ->assertSeeHtml('data-test="clan-team-matches"')
         ->assertSeeHtml('data-test="rapid-lineup"')
         ->assertSee($a->seats->first()->user->name)
-        ->assertSeeInOrder(['data-test="team-match-row"', $match->label(), $b->clan->name, 'rapid · 2 boards'], false)
+        ->assertSeeInOrder(['data-test="team-match-row"', $match->label(), $b->clan->name, 'Chess · 2 boards'], false)
         ->assertSeeHtml('href="'.route('challenges.create', ['to' => $a->id]).'" class="inline-flex h-11 items-center rounded-md border border-line px-4');
 
     // A member sees no challenge against the own clan.

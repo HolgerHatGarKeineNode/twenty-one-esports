@@ -360,7 +360,9 @@ final class RulesPage
             'items' => [
                 __('Team matches are played in rapid only. The challenging captain picks 2 or 3 boards.'),
                 __('Each captain names one player per board until :time before the start. A clan without a full lineup at the lock loses the whole team match by forfeit; if neither clan named one, it is void.', ['time' => self::minutes($lock)]),
-                __('At the lock the league orders each side by rapid Elo: the strongest player plays board 1. The challenging clan has White on boards 1 and 3.'),
+                $go
+                    ? __('At the lock the league orders each side by rapid Elo: the strongest player plays board 1. In chess and Blockli the challenging clan has White on boards 1 and 3.')
+                    : __('At the lock the league orders each side by rapid Elo: the strongest player plays board 1. The challenging clan has White on boards 1 and 3.'),
                 __('Every board starts on its own at the agreed time. The side to move has :seconds for the first move, or loses that board by forfeit. A board the league starts late still gives at least :floor from its actual start.', ['seconds' => self::seconds(ChessTeamMatches::firstMoveSeconds()), 'floor' => self::seconds(ChessTeamMatches::lateStartFloorSeconds())]),
                 __('A board forfeit counts one point for the side that showed up. A board where neither side moved is void and counts for nobody.'),
                 __('A win is 1 point, a draw ½. The clan with more board points wins the team match and its +5 hashrate bonus. Equal points are a team draw: each clan keeps the hashrate of its boards, without a bonus.'),

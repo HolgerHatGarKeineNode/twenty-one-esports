@@ -5,6 +5,7 @@ use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\Lineup;
+use App\Support\GameNames;
 use App\Models\LineupSeat;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
@@ -490,7 +491,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     @if ($teamLineups->isNotEmpty() || $openTeam->isNotEmpty())
         <section aria-labelledby="tm-h" class="flex flex-col gap-3 rounded-[4px] border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="clan-team-matches">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ $teamLineups->every(fn (Lineup $lineup): bool => $lineup->gameMode()->timeControl === '600+5') ? __('Rapid 10+5 over 2 or 3 boards') : __('Rapid over 2 or 3 boards') }}</span></div>
+                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ $teamLineups->every(fn (Lineup $lineup): bool => app(GameRegistry::class)->mode($lineup->game, $lineup->mode)?->timeControl === '600+5') ? __('Rapid 10+5 over 2 or 3 boards') : __('Rapid over 2 or 3 boards') }}</span></div>
                 @php($teamChallenges = $this->teamChallenges())
                 @if ($teamChallenges !== [])
                     <div class="flex flex-wrap gap-2">
@@ -522,8 +523,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     @php($cell = SeriesPresenter::score($teamMatch))
                     <a href="{{ route('matches.show', $teamMatch) }}" class="tr grid h-11 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink xl:grid-cols-[96px_minmax(0,1fr)_120px_150px_160px] xl:gap-4" data-test="team-match-row">
                         <span class="font-bold text-btc">{{ $teamMatch->label() }}</span>
-                        <span class="flex min-w-0 items-center gap-2 whitespace-nowrap"><x-clan-tag :tag="$teamMatch->sideTag($theirSide)" size="sm" /><span class="truncate">{{ $teamMatch->sideName($theirSide) }}</span></span>
-                        <span class="hidden text-ink-2 xl:block">{{ SeriesPresenter::format($teamMatch) }}</span>
+                        <span class="flex min-w-0 items-center gap-2 whitespace-nowrap"><x-clan-tag :tag="$teamMatch->sideTag($theirSide)" size="sm" /><span class="truncate">{{ $teamMatch->sideName($theirSide) }}</span><span class="shrink-0 text-xs text-ink-3 xl:hidden" data-test="team-match-game">{{ GameNames::game($teamMatch->game) }}</span></span>
+                        <span class="hidden truncate text-ink-2 xl:block" title="{{ GameNames::full($teamMatch->game, $teamMatch->mode) }}">{{ GameNames::game($teamMatch->game) }} · {{ trans_choice(':count board|:count boards', (int) $teamMatch->boards) }}</span>
                         <span class="hidden text-ink-2 xl:block">{{ $teamMatch->rated ? __('Rated') : __('Friendly') }}@if ($cell['text'] !== '–') · {{ $cell['text'] }}@endif</span>
                         <span class="text-right whitespace-nowrap text-ink-2">{{ SeriesPresenter::when($teamMatch, auth()->user()) }}</span>
                     </a>

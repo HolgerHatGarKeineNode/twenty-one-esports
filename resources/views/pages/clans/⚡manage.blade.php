@@ -1111,7 +1111,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                 @php($rowKey = $rowGame === $leadGame ? $rowMode : $rowGame.'-'.$rowMode)
                 @php($isEditing = $editing === $rowMode && ($editingGame ?? $leadGame) === $rowGame)
                 <div wire:key="lu-{{ $rowGame }}-{{ $rowMode }}" class="tr grid min-h-[60px] grid-cols-[104px_minmax(0,1fr)] items-center gap-3 rounded-sm border-b border-hairline p-2 lg:grid-cols-[110px_minmax(0,1fr)_190px_100px_auto]">
-                    <span class="flex flex-col gap-0.5"><b class="text-[15px]">{{ $rowMode }}</b>@if ($stats)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@elseif ($teamRow)<span class="text-xs font-normal text-ink-2">{{ __('team matches, 2 or 3 boards') }}</span>@endif</span>
+                    <span class="flex flex-col gap-0.5"><b class="text-[15px]">{{ $rowMode }}</b>@if ($stats)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@elseif ($teamRow)<span class="text-xs font-normal text-ink-2 [overflow-wrap:anywhere] hyphens-auto">{{ __('team matches, 2 or 3 boards') }}</span>@endif</span>
                     <span class="flex min-w-0 flex-wrap gap-2">
                         @foreach ($lineup?->activeSeats() ?? [] as $seat)
                             {{-- min-w-0 + truncate: a long display name (a real Nostr name, not
@@ -1143,7 +1143,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                     @php($picked = collect($picks)->filter(fn ($role) => in_array($role, ['captain', 'player'], true))->count())
                     <div wire:key="builder-{{ $rowGame }}-{{ $rowMode }}" role="group" aria-labelledby="builder-title" class="flex flex-col gap-3 rounded-md bg-well px-4 py-4 shadow-ring lg:px-5">
                         <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                            <b id="builder-title" class="text-[15px]">{{ __('Who plays the :mode', ['mode' => GameNames::game($rowGame).' '.$rowMode]) }}</b>
+                            <b id="builder-title" class="text-[15px]">{{ __('Who plays the :mode', ['mode' => GameNames::full($rowGame, $rowMode)]) }}</b>
                             <span @class(['text-xs', 'text-win' => $picked >= $needed, 'text-btc-hi' => $picked < $needed])>{{ __(':n of :m players picked', ['n' => $picked, 'm' => $needed]) }}</span>
                         </span>
                         <span class="text-xs leading-normal text-ink-2">{{ __('Pick from your roster. Joining the clan is their yes, so nobody has to confirm again; anyone can leave the clan at any time.') }}</span>

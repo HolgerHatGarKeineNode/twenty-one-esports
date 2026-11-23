@@ -218,6 +218,23 @@ amount, under a new rule set name, `season-chain-v2`. They apply to every chain 
 was signed; this league signs no such genesis any more. A validator that does not know `season-chain-v2` MUST reject
 a chain that names it rather than read it by the dates of `season-chain-v1`.
 
+### Changelog of revision 9.28 (2026-11-23)
+
+Clan team matches in Go, on each of its three board sizes, built on the Blockli team matches of revision 9.25 and
+through them on the chess ones of revision 9.22 (DerCaddy, 2026-11-23: „Go sollte auch als Mannschaftsspiel möglich
+sein!“, all three sizes in rapid). No new kind and no new tag; checked against the app's tests, not on a public relay,
+and without printed examples.
+
+- **Go rapid with boards** ([Game registry](#game-registry), [Go team matches](#go-team-matches-rev-928)): mode
+  `rapid` of `go-9`, `go-13` and `go-19` allows `boards` 2 or 3; Go blitz (9 x 9 only) and correspondence have no team
+  match. Each size is a game of its own, so a clan has one Go lineup per size (`<clan>/go-9/rapid`, ...), each only to
+  field team matches and without a rating of its own.
+- **The rules of revision 9.25**, read with the size: the board order by that size's rapid Elo, rated boards on that
+  size's rapid ladder, the pair limit per pair of lineups (Go team matches of two sizes never block each other).
+- **The challenger moves first on odd boards, with Black.** Go's first side is Black: the challenger has Black, the
+  first move, on boards 1 and 3; White's komi of 7.5 stays as in every Go game.
+- **Attestations and clan hashrate** as for a Blockli team match, on the size's rapid ladder.
+
 ### Changelog of revision 9.27 (2026-11-18, draft)
 
 A game halves by what it has mined, never by a date (user, 2026-11-18: a slow week must not burn an era, and a busy
@@ -288,23 +305,6 @@ for the game while the league has switched it on, and none otherwise.
   (correspondence), and a board game that is switched off has no weight. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
   season that began without the game is offered the same values as a proposal; nothing of a proposal is in force
   until the board saves it.
-
-### Changelog of revision 9.28 (2026-11-23)
-
-Clan team matches in Go, on each of its three board sizes, built on the Blockli team matches of revision 9.25 and
-through them on the chess ones of revision 9.22 (DerCaddy, 2026-11-23: „Go sollte auch als Mannschaftsspiel möglich
-sein!“, all three sizes in rapid). No new kind and no new tag; checked against the app's tests, not on a public relay,
-and without printed examples.
-
-- **Go rapid with boards** ([Game registry](#game-registry), [Go team matches](#go-team-matches-rev-928)): mode
-  `rapid` of `go-9`, `go-13` and `go-19` allows `boards` 2 or 3; Go blitz (9 x 9 only) and correspondence have no team
-  match. Each size is a game of its own, so a clan has one Go lineup per size (`<clan>/go-9/rapid`, ...), each only to
-  field team matches and without a rating of its own.
-- **The rules of revision 9.25**, read with the size: the board order by that size's rapid Elo, rated boards on that
-  size's rapid ladder, the pair limit per pair of lineups (Go team matches of two sizes never block each other).
-- **The challenger moves first on odd boards, with Black.** Go's first side is Black: the challenger has Black, the
-  first move, on boards 1 and 3; White's komi of 7.5 stays as in every Go game.
-- **Attestations and clan hashrate** as for a Blockli team match, on the size's rapid ladder.
 
 ### Changelog of revision 9.25 (2026-11-06)
 

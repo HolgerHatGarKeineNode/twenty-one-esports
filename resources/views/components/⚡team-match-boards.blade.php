@@ -7,6 +7,7 @@ use App\Models\SeriesMatch;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\GameNames;
 use App\Support\Series\SeriesPresenter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -134,7 +135,7 @@ new class extends Component {
                             <span class="size-3 shrink-0 rounded-full" style="background: {{ $colors[$side] }}" aria-hidden="true"></span>
                             <span class="flex min-w-0 grow flex-col">
                                 <span class="truncate font-bold">{{ $row['players'][$side]?->displayName() ?? __('Deleted account') }}</span>
-                                <span class="text-[11px] text-ink-3">{{ $color === 'w' ? __('White') : __('Black') }} · {{ $m->sideName($side) }}</span>
+                                <span class="text-[11px] text-ink-3">{{ GameNames::sideColours($m->game)[$color] === 'white' ? __('White') : __('Black') }} · {{ $m->sideName($side) }}</span>
                             </span>
                             @if ($clocks !== null)
                                 <b @class(['shrink-0 rounded-sm px-2 py-1 font-mono text-[15px] tabular-nums', 'bg-btc text-on-btc' => $running === $color, 'bg-well text-ink' => $running !== $color])
@@ -143,7 +144,7 @@ new class extends Component {
                         </span>
                     @endforeach
                     @if ($firstMove !== null && $game->deadline_ms !== null)
-                        <span class="text-xs text-btc-hi" data-test="team-board-first-move-{{ $row['board'] }}">{{ $firstMove === 'w' ? __('White to make the first move') : __('Black to make the first move') }} · <span data-clock='@json(['ms' => max(0, $game->deadline_ms - $nowMs), 'running' => true])'>{{ $clock($game->deadline_ms - $nowMs) }}</span></span>
+                        <span class="text-xs text-btc-hi" data-test="team-board-first-move-{{ $row['board'] }}">{{ GameNames::sideColours($m->game)[$firstMove] === 'white' ? __('White to make the first move') : __('Black to make the first move') }} · <span data-clock='@json(['ms' => max(0, $game->deadline_ms - $nowMs), 'running' => true])'>{{ $clock($game->deadline_ms - $nowMs) }}</span></span>
                     @endif
                     @if ($game !== null)
                         <a href="{{ ChessTeamMatches::gameUrl($game) }}" class="btn-w inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] text-ink hover:text-ink" data-test="team-board-link-{{ $row['board'] }}">

@@ -91,7 +91,7 @@ final class TeamMatchNotifications
 
             $this->notifier->send($user, NotificationKind::TeamMatch, new Notice(
                 __('Your board :board started', ['board' => $game->board], $locale),
-                __('Team match :number, :mode. Make your first move within :seconds seconds, or the board is lost by forfeit.', ['number' => '#'.$game->matchNumber(), 'mode' => __(app(GameRegistry::class)->mode($game instanceof BoardGame ? $game->game : 'chess', $game->mode)->name ?? 'Rapid 10+5', [], $locale), 'seconds' => (int) ($game->first_move_seconds ?? ChessTeamMatches::firstMoveSeconds())], $locale),
+                __('Team match :number, :mode. Make your first move within :seconds seconds, or the board is lost by forfeit.', ['number' => '#'.$game->matchNumber(), 'mode' => __(app(GameRegistry::class)->mode($game instanceof BoardGame ? $game->game : 'chess', $game->mode)->name ?? $game->mode, [], $locale), 'seconds' => (int) ($game->first_move_seconds ?? ChessTeamMatches::firstMoveSeconds())], $locale),
                 ChessTeamMatches::gameUrl($game),
                 $game->matchNumber(),
                 __('Play', [], $locale),

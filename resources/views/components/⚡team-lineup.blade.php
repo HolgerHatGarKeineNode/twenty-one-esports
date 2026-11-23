@@ -5,6 +5,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
 use App\Models\User;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\GameNames;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
 use Livewire\Attributes\Computed;
@@ -181,14 +182,15 @@ new class extends Component {
                 @else
                     <ol class="m-0 flex list-none flex-col gap-1 p-0">
                         @foreach ($players as $player)
-                            @php($white = $player->board !== null && (($player->board % 2 === 1) === ($side === 'challenger')))
+                            {{-- The challenger has the first side on odd boards: White in chess and Blockli, Black in Go (NIP rev. 9.28). --}}
+                            @php($first = $player->board !== null && (($player->board % 2 === 1) === ($side === 'challenger')))
                             <li class="flex min-h-8 min-w-0 items-center gap-2 text-[13px]" data-test="team-lineup-player">
                                 @if ($player->board !== null)
                                     <span class="w-14 shrink-0 text-xs text-ink-3">{{ __('Board :n', ['n' => $player->board]) }}</span>
                                 @endif
                                 <span class="min-w-0 grow truncate">{{ $player->user?->displayName() ?? __('Deleted account') }}</span>
                                 @if ($player->board !== null)
-                                    <span class="shrink-0 text-xs text-ink-2">{{ $player->rating }} · {{ $white ? __('White') : __('Black') }}</span>
+                                    <span class="shrink-0 text-xs text-ink-2">{{ $player->rating }} · {{ GameNames::sideColours($m->game)[$first ? 'w' : 'b'] === 'white' ? __('White') : __('Black') }}</span>
                                 @endif
                             </li>
                         @endforeach

@@ -350,7 +350,7 @@ test('the owner saves a chess rapid lineup for team matches, signed as <clan>/ch
         ->assertDontSeeHtml('data-test="edit-lineup-chess-blitz"')
         ->call('editLineup', 'rapid', 'chess')
         ->assertOk()
-        ->assertSee('Who plays the Chess rapid')
+        ->assertSee('Who plays the Chess Rapid 10+5')
         ->assertSee('A team match needs a player per board')
         ->call('$refresh')->assertOk()
         ->call('editLineup', 'blitz', 'chess')->assertForbidden();
@@ -387,7 +387,7 @@ test('the owner saves a Blockli rapid lineup for team matches, signed as <clan>/
         ->assertDontSeeHtml('data-test="edit-lineup-blockli-blitz"')
         ->call('editLineup', 'rapid', 'blockli')
         ->assertOk()
-        ->assertSee('Who plays the Blockli rapid')
+        ->assertSee('Who plays the Blockli Rapid 10+5')
         ->call('$refresh')->assertOk()
         ->call('editLineup', 'correspondence', 'blockli')->assertForbidden();
 });

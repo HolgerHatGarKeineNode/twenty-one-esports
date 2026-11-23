@@ -151,6 +151,11 @@ test('Go rapid plays team matches over 2 or 3 boards on every size, and the clan
             ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'team', 'boards' => ['1-0', '0-1', '1-0']]))->toBe([])
             ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'team', 'boards' => ['1-0']]))->toBe(['boards_not_allowed'])
             ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'solo', 'result' => '0-1']))->toBe([])
+            ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'team', 'boards' => ['1-0', 'x']]))->toBe(['board_2_result'])
+            ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'team', 'boards' => ['1-0', '0-1', '1-0', '0-1']]))->toBe(['boards_not_allowed'])
+            ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'team', 'boards' => ['a' => '1-0', 'b' => '0-1']]))->toBe(['boards_not_allowed'])
+            ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['result' => '1-0']))->toBe(['format'])
+            ->and($registry->get($slug)->validateResult($registry->mode($slug, 'rapid'), ['format' => 'solo', 'result' => 'x']))->toBe(['result'])
             ->and($registry->get($slug)->validateResult($registry->mode($slug, 'correspondence'), ['result' => '1-0']))->toBe([]);
     }
 
@@ -331,4 +336,44 @@ test('Go 19 x 19 names its own 15+10 clock in the challenge form, the board star
     $this->get(route('rules'))->assertOk()
         ->assertSee('Go 9×9 10+5, Go 13×13 10+5, Go 19×19 15+10', false)
         ->assertDontSee('all in Rapid 10+5', false);
+});
+
+test('a Go team board names Black for the side that moves first: the challenger on board 1, on the match page and in the lineup', function () {
+    [$match, $a, $b] = lockedGoTeamMatch('go-9', boards: 2);
+    $challenger = $match->sideName('challenger');
+
+    // Before the start every board waits for Black's first move.
+    $this->travelTo($match->start_at->copy()->addSecond());
+    app(ChessTeamMatches::class)->startDue();
+    $this->get(route('matches.show', $match->number))->assertOk()
+        ->assertSee(__('Black').' · '.$challenger)
+        ->assertSee(__('Black to make the first move'))
+        ->assertDontSee(__('White to make the first move'));
+
+    // The lineup in the match room: the challenger's board 1 player plays Black.
+    Livewire::actingAs($a[1])->test('team-lineup', ['match' => $match->refresh()])
+        ->assertSeeHtmlInOrder(['data-test="team-lineup-side-challenger"', '· '.__('Black').'</span>', '· '.__('White').'</span>', 'data-test="team-lineup-side-challenged"', '· '.__('White').'</span>', '· '.__('Black').'</span>']);
+});
+
+test('with only Go 9 x 9 switched on, the rules name its clock alone and a leftover 19 x 19 lineup gets no team challenge', function () {
+    [$go9] = goTeamLineup('go-9');
+    $go19 = Lineup::factory()->game('go-19', 'rapid')->ready(1)->create(['clan_id' => $go9->clan_id]);
+    config(['esports.board_games.games.go-13.enabled' => false, 'esports.board_games.games.go-19.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('(Go 9×9 10+5)', false)
+        ->assertDontSee('Go 19×19 15+10', false);
+
+    $this->actingAs(User::factory()->create())->get(route('clans.show', $go9->clan))->assertOk()
+        ->assertSee(e(route('challenges.create', ['to' => $go9->id])), false)
+        ->assertDontSee(e(route('challenges.create', ['to' => $go19->id])), false);
+});
+
+test('the clan page\'s next team matches name the Go size, so two Go team matches can be told apart', function () {
+    [$nine] = lockedGoTeamMatch('go-9', boards: 3);
+    $clan = $nine->challengerLineup->clan;
+
+    $this->get(route('clans.show', $clan))->assertOk()
+        ->assertSeeInOrder(['data-test="team-match-row"', $nine->label(), 'data-test="team-match-game"', 'Go 9×9', 'Go 9×9 · 3 boards'], false);
 });
