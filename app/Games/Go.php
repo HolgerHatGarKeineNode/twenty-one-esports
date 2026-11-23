@@ -16,6 +16,10 @@ use App\Support\Board\GoRules;
  *
  * Black moves first: the core's first side (`w`) plays the black stones, so the sides are named the other way round
  * than in chess (sides()). White's komi of 7.5 makes up for the first move, so a pairing plays one game.
+ *
+ * Rapid on every size plays clan team matches over 2 or 3 boards, as chess and Blockli rapid (DerCaddy, 2026-11-23:
+ * "Go sollte auch als Mannschaftsspiel möglich sein!"; NIP rev. 9.28): a lineup per size (`<clan>/go-9/rapid`, ...),
+ * the board order by that size's rapid Elo, the challenger with the first move, Black, on boards 1 and 3.
  */
 abstract class Go extends BoardGame implements Grouped
 {
@@ -58,12 +62,49 @@ abstract class Go extends BoardGame implements Grouped
 
     public function resultSchema(GameMode $mode): array
     {
-        return ['result' => 'one of '.implode(', ', self::RESULTS)];
+        // As Blockli (NIP rev. 9.28): a team match reports one result per board, in rapid, the mode that has boards.
+        if ($mode->boards === []) {
+            return ['result' => 'one of '.implode(', ', self::RESULTS)];
+        }
+
+        return [
+            'format' => 'solo | team',
+            'result' => 'solo: one of '.implode(', ', self::RESULTS),
+            'boards' => 'team: list of results, board 1 first, '.implode(' or ', $mode->boards).' boards',
+        ];
     }
 
     public function validateResult(GameMode $mode, array $result): array
     {
-        return in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'];
+        if ($mode->boards === []) {
+            return in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'];
+        }
+
+        return match ($result['format'] ?? null) {
+            'solo' => in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'],
+            'team' => $this->validateTeamMatch($mode, $result['boards'] ?? null),
+            default => ['format'],
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function validateTeamMatch(GameMode $mode, mixed $boards): array
+    {
+        if (! is_array($boards) || ! array_is_list($boards) || ! $mode->allowsBoards(count($boards))) {
+            return ['boards_not_allowed'];
+        }
+
+        $errors = [];
+
+        foreach ($boards as $index => $board) {
+            if (! in_array($board, self::RESULTS, true)) {
+                $errors[] = 'board_'.($index + 1).'_result';
+            }
+        }
+
+        return $errors;
     }
 
     public function sides(): array
