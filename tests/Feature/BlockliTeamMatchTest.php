@@ -465,6 +465,12 @@ test('a friendly Blockli team match is decided on board points and earns no hash
 
 test('the team match page shows every Blockli board with its clocks and a link to the board, and the board page leads back to the team match', function () {
     [$match] = lockedBlockliTeamMatch(boards: 2);
+
+    // Locked, not started: a Blockli tile draws neither a chess board nor Go stones.
+    $this->get(route('matches.show', $match->number))->assertOk()
+        ->assertDontSee('data-test="team-board-fen-1"', false)
+        ->assertDontSee('data-test="team-board-stones-1"', false);
+
     $games = startedBlockliBoards($match);
     playBlockli($games[1], ['e1-e2']);
 
@@ -474,7 +480,8 @@ test('the team match page shows every Blockli board with its clocks and a link t
         ->assertSee(route('board.show', $games[1]), false)
         ->assertSee('data-test="team-board-move-1"', false)
         ->assertSee('data-test="team-board-clock-1-w"', false)
-        ->assertDontSee('data-test="team-board-fen-1"', false);
+        ->assertDontSee('data-test="team-board-fen-1"', false)
+        ->assertDontSee('data-test="team-board-stones-1"', false);
 
     $black = $games[2]->black;
     $this->actingAs($black)->get(route('board.show', $games[2]))->assertOk()

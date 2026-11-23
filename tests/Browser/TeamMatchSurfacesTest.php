@@ -11,6 +11,7 @@ use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BlockliOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
@@ -188,6 +189,28 @@ test('the clan page lines up four team challenges two by two on a phone and in o
 
     if ($file = env('TEAM_SURFACES_REPORT')) {
         file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT));
+    }
+});
+
+test('five team challenges keep every game name whole at 640 and 1024 px, the label on its own line, the fields equally wide', function () {
+    GoOn::play();
+    BlockliOn::play();
+    $clan = Clan::factory()->create(['name' => 'Orange Pill Squad']);
+
+    foreach (['chess', 'blockli', 'go-9', 'go-13', 'go-19'] as $game) {
+        Lineup::factory()->game($game, 'rapid')->ready(1)->create(['clan_id' => $clan->id]);
+    }
+
+    foreach ([640, 1024] as $width) {
+        $page = surfacesPage(User::factory()->create(), route('clans.show', $clan, false), $width);
+        $cut = $page->evaluate("() => [...document.querySelectorAll('[data-test=challenge-team-match] span')].filter((s) => s.scrollWidth > s.clientWidth).map((s) => s.textContent)");
+        $fields = collect($page->evaluate(SURFACES_CHALLENGES)['fields']);
+
+        expect($fields)->toHaveCount(5)
+            ->and($cut)->toBe([], "cut names at {$width}")
+            ->and($fields->max('w') - $fields->min('w'))->toBeLessThanOrEqual(1, "equal fields at {$width}")
+            ->and($fields->pluck('top')->unique()->count())->toBe(1, "rows at {$width}")
+            ->and($page->evaluate('() => window.__errors'))->toBe([]);
     }
 });
 

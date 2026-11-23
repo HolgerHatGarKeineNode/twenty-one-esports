@@ -213,7 +213,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * "Challenge to a team match" on another clan's page, one per team lineup:
+     * The "Challenge:" fields on another clan's page, one per team lineup:
      * the challenge form with their lineup picked (and the viewer's of the same
      * game and mode, when they captain one); none for its own members.
      *
@@ -497,12 +497,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 Challenge (user's choice, 2026-11-23): "Challenge:" and one equal field per team lineup, named by its game.
                 Phone: the label on its line, the fields two by two, an odd last one across both columns. From 640 px: one
                 row, every field as wide as the others, at most 192 px, so a single field stays a button, not a bar (R15
-                verb, R16 rv-b2 44 px, R11 no wrapped label).
+                verb, R16 rv-b2 44 px, R11 no wrapped label). From five fields the label takes its own line on every width,
+                or "Go 13×13" would be cut at 1024 px, where the right column narrows the main one to about 560 px.
             --}}
             @php($teamChallenges = $this->teamChallenges())
             @if ($teamChallenges !== [])
-                <div role="group" aria-labelledby="tm-ch" class="grid grid-cols-2 gap-2 sm:grid-cols-[auto_repeat(var(--fields),minmax(0,12rem))] sm:items-center" style="--fields: {{ count($teamChallenges) }}" data-test="team-challenges">
-                    <span id="tm-ch" class="col-span-2 text-xs font-bold text-ink-2 sm:col-span-1 sm:pr-2" data-test="team-challenges-label">{{ __('Challenge:') }}</span>
+                <div role="group" aria-labelledby="tm-ch" @class(['grid grid-cols-2 gap-2 sm:items-center', 'sm:grid-cols-[auto_repeat(var(--fields),minmax(0,12rem))]' => count($teamChallenges) < 5, 'sm:grid-cols-[repeat(var(--fields),minmax(0,12rem))]' => count($teamChallenges) >= 5]) style="--fields: {{ count($teamChallenges) }}" data-test="team-challenges">
+                    <span id="tm-ch" @class(['col-span-2 text-xs font-bold text-ink-2', 'sm:col-span-1 sm:pr-2' => count($teamChallenges) < 5, 'sm:col-span-full' => count($teamChallenges) >= 5]) data-test="team-challenges-label">{{ __('Challenge:') }}</span>
                     @foreach ($teamChallenges as $teamChallenge)
                         <a href="{{ $teamChallenge['url'] }}" aria-label="{{ __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}" @class(['rv-b2 min-w-0 px-3', 'max-sm:col-span-2' => $loop->last && $loop->odd]) data-test="challenge-team-match"><span class="truncate">{{ $teamChallenge['game'] }}</span></a>
                     @endforeach
