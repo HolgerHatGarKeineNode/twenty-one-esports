@@ -284,7 +284,7 @@ test('the team match page shows the Go boards with their clocks, the lobby offer
     }
 
     $this->get(route('rules'))->assertOk()
-        ->assertSee(__('Two clans play chess or Go on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => 'Rapid 10+5']), false)
+        ->assertSee(__('Two clans play chess or Go on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => 'Rapid']), false)
         ->assertSee('Go team matches follow the same rules with one rapid lineup per board size', false);
 
     $this->withSession(['locale' => 'de'])->get(route('rules'))->assertOk()
@@ -309,4 +309,26 @@ test('the public clan page offers one Go team challenge per size beside chess', 
     // Lineups that all play 10+5 keep the clock in the heading.
     $go19->delete();
     $this->get(route('clans.show', $go9->clan))->assertOk()->assertSee('Rapid 10+5 over 2 or 3 boards');
+});
+
+test('Go 19 x 19 names its own 15+10 clock in the challenge form, the board start notice and the rules, never 10+5', function () {
+    [$lineup, $captain] = goTeamLineup('go-19');
+    [$other] = goTeamLineup('go-19');
+
+    Livewire::actingAs($captain)->test('pages::challenges.create', ['lineupId' => $lineup->id])
+        ->call('next')->call('pickOpponent', $other->id)->call('next')->assertSet('step', 3)
+        ->assertSee(__(':n players per clan play :mode at the same time, the boards ordered by rapid Elo', ['n' => 2, 'mode' => 'Rapid 15+10']))
+        ->assertDontSee('10+5');
+
+    [$match] = lockedGoTeamMatch('go-19', boards: 2);
+    $games = startedGoTeamBoards($match);
+    $notice = $games[1]->white->notifications()->get()->first(fn ($row) => $row->data['title'] === __('Your board :board started', ['board' => 1]));
+
+    expect($notice)->not->toBeNull()
+        ->and($notice->data['body'])->toContain('Rapid 15+10')->not->toContain('10+5');
+
+    // The lead names no single clock while Go plays team matches; the Go sentence names each size's.
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('Go 9×9 10+5, Go 13×13 10+5, Go 19×19 15+10', false)
+        ->assertDontSee('all in Rapid 10+5', false);
 });

@@ -883,7 +883,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
                             @endforeach
                         @endif
                     </div>
-                    <p class="m-0 text-xs leading-normal text-ink-2" data-test="format-text">{{ $team ? __(':n players per clan play rapid 10+5 at the same time, the boards ordered by rapid Elo', ['n' => $boards]) : $formatText($bestOf) }}</p>
+                    <p class="m-0 text-xs leading-normal text-ink-2" data-test="format-text">{{ $team ? __(':n players per clan play :mode at the same time, the boards ordered by rapid Elo', ['n' => $boards, 'mode' => GameNames::mode($lineup->game, $lineup->mode)]) : $formatText($bestOf) }}</p>
                     @error('bestOf')<p class="m-0 text-[13px] text-loss" role="alert" data-test="step-error">{{ $message }}</p>@enderror
                     @error('boards')<p class="m-0 text-[13px] text-loss" role="alert" data-test="step-error">{{ $message }}</p>@enderror
                 </div>

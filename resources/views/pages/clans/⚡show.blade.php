@@ -490,7 +490,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     @if ($teamLineups->isNotEmpty() || $openTeam->isNotEmpty())
         <section aria-labelledby="tm-h" class="flex flex-col gap-3 rounded-[4px] border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="clan-team-matches">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ $teamLineups->every(fn (Lineup $lineup): bool => app(\App\Games\GameRegistry::class)->mode($lineup->game, $lineup->mode)?->timeControl === '600+5') ? __('Rapid 10+5 over 2 or 3 boards') : __('Rapid over 2 or 3 boards') }}</span></div>
+                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ $teamLineups->every(fn (Lineup $lineup): bool => $lineup->gameMode()->timeControl === '600+5') ? __('Rapid 10+5 over 2 or 3 boards') : __('Rapid over 2 or 3 boards') }}</span></div>
                 @php($teamChallenges = $this->teamChallenges())
                 @if ($teamChallenges !== [])
                     <div class="flex flex-wrap gap-2">
