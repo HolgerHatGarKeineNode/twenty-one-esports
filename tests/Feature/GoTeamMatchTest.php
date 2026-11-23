@@ -377,3 +377,82 @@ test('the clan page\'s next team matches name the Go size, so two Go team matche
     $this->get(route('clans.show', $clan))->assertOk()
         ->assertSeeInOrder(['data-test="team-match-row"', $nine->label(), 'data-test="team-match-game"', 'Go 9×9', 'Go 9×9 · 3 boards'], false);
 });
+
+/** The SVG of a team match tile's Go board, cut from the page by its test hook. */
+function goTileBoard(string $html, int $board): string
+{
+    $at = strpos($html, 'data-test="team-board-stones-'.$board.'"');
+    expect($at)->not->toBeFalse("no Go board in tile {$board}");
+    $start = strrpos(substr($html, 0, (int) $at), '<svg');
+
+    return substr($html, (int) $start, strpos($html, '</svg>', (int) $at) + 6 - (int) $start);
+}
+
+test('the clan page lines up its team challenges in one labelled row: one field per lineup, named by its game, each to its challenge form', function () {
+    [$go9] = goTeamLineup('go-9');
+    $chess = Lineup::factory()->game('chess', 'rapid')->ready(1)->create(['clan_id' => $go9->clan_id]);
+    $go13 = Lineup::factory()->game('go-13', 'rapid')->ready(1)->create(['clan_id' => $go9->clan_id]);
+    $go19 = Lineup::factory()->game('go-19', 'rapid')->ready(1)->create(['clan_id' => $go9->clan_id]);
+
+    $html = $this->actingAs(User::factory()->create())->get(route('clans.show', $go9->clan))->assertOk()
+        ->assertSeeHtml('data-test="team-challenges-label">Challenge:</span>')
+        ->assertSeeInOrder(['data-test="team-challenges"', 'Challenge:',
+            e(route('challenges.create', ['to' => $chess->id])), '<span class="truncate">Chess</span>',
+            e(route('challenges.create', ['to' => $go9->id])), '<span class="truncate">Go 9×9</span>',
+            e(route('challenges.create', ['to' => $go13->id])), '<span class="truncate">Go 13×13</span>',
+            e(route('challenges.create', ['to' => $go19->id])), '<span class="truncate">Go 19×19</span>'], false)
+        ->getContent();
+
+    // Four equal fields in one row: the grid's column count is the number of fields; none spans two on a phone.
+    expect(substr_count($html, 'data-test="challenge-team-match"'))->toBe(4)
+        ->and($html)->toContain('style="--fields: 4"')
+        ->and($html)->not->toContain('max-sm:col-span-2');
+
+    // An odd count: the last field spans both phone columns, so no field stands alone in half a row.
+    $go19->delete();
+    $html = $this->get(route('clans.show', $go9->clan))->assertOk()->getContent();
+    $last = strpos($html, e(route('challenges.create', ['to' => $go13->id])));
+    expect(substr_count($html, 'data-test="challenge-team-match"'))->toBe(3)
+        ->and($html)->toContain('style="--fields: 3"')
+        ->and(substr_count($html, 'max-sm:col-span-2'))->toBe(1)
+        ->and(substr($html, (int) $last, 400))->toContain('max-sm:col-span-2');
+
+    $this->withSession(['locale' => 'de'])->get(route('clans.show', $go9->clan))->assertOk()
+        ->assertSeeHtml('data-test="team-challenges-label">Herausfordern:</span>')
+        ->assertSeeHtml('<span class="truncate">Schach</span>');
+});
+
+test('a Go team tile draws its board with the stones of its game on the grid of its size, and redraws after a move', function (string $size, int $lines) {
+    [$match] = lockedGoTeamMatch($size, boards: 2);
+
+    // Before the start: the empty board of its size, never a chess board.
+    $html = $this->get(route('matches.show', $match->number))->assertOk()->getContent();
+    $empty = goTileBoard($html, 1);
+    expect($html)->not->toContain('data-test="team-board-fen-')
+        ->and($empty)->toContain('data-lines="'.$lines.'"', 'data-stones="0"', 'role="img"', 'aria-label="Board 1 of '.$match->label().'"')
+        ->and(substr_count($empty, '<line '))->toBe(2 * $lines)
+        ->and(substr_count($empty, 'data-stone='))->toBe(0);
+
+    $games = startedGoTeamBoards($match);
+    playGoTeamBoard($games[1], ['e5', 'd4', 'c3']);
+
+    $html = $this->get(route('matches.show', $match->number))->assertOk()->getContent();
+    $one = goTileBoard($html, 1);
+    expect($one)->toContain('data-lines="'.$lines.'"', 'data-stones="3"', 'id="go-tile-1-stone-black"', 'url(#go-tile-1-stone-black)')
+        ->and(substr_count($one, '<line '))->toBe(2 * $lines)
+        ->and(substr_count($one, 'data-stone="black"'))->toBe(2)
+        ->and(substr_count($one, 'data-stone="white"'))->toBe(1)
+        // The stone set last, c3 (Black), carries the ring.
+        ->and($one)->toContain('data-last="black"')
+        ->and(goTileBoard($html, 2))->toContain('data-stones="0"', 'id="go-tile-2-wood"')->not->toContain('data-last=')
+        ->and($html)->toContain('data-test="team-board-move-1"');
+
+    // The tile re-renders after a move (teamMatchBoards.js asks for $refresh): the new stone is drawn.
+    $component = Livewire::test('team-match-boards', ['match' => $match->refresh()]);
+    playGoTeamBoard($games[1], ['f6']);
+    expect(goTileBoard($component->call('$refresh')->assertOk()->html(), 1))->toContain('data-stones="4"', 'data-last="white"');
+})->with([
+    'Go 9×9' => ['go-9', 9],
+    'Go 13×13' => ['go-13', 13],
+    'Go 19×19' => ['go-19', 19],
+]);

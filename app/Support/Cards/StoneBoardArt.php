@@ -92,14 +92,15 @@ final class StoneBoardArt
     /**
      * The stones' light, their shadow and the wood as SVG gradients (`go-stone-black`, `go-stone-white`,
      * `go-stone-shadow`, `go-wood`), value for value the page's (resources/js/boardGame.js STONE_GRADIENTS): for a
-     * drawing that is an SVG, as the stream's board scene.
+     * drawing that is an SVG, as the stream's board scene. `$id` prefixes the ids: a page with several boards (the
+     * team match tiles) gives each its own, so no id is in the document twice.
      */
-    public static function gradients(): string
+    public static function gradients(string $id = 'go'): string
     {
         $svg = '';
 
         foreach (self::STONE as $kind => $light) {
-            $svg .= '<radialGradient id="go-stone-'.$kind.'" cx="'.($light['cx'] * 100).'%" cy="'.($light['cy'] * 100).'%" r="'.($light['r'] * 100).'%">';
+            $svg .= '<radialGradient id="'.$id.'-stone-'.$kind.'" cx="'.($light['cx'] * 100).'%" cy="'.($light['cy'] * 100).'%" r="'.($light['r'] * 100).'%">';
 
             foreach ($light['stops'] as [$offset, $colour]) {
                 $svg .= '<stop offset="'.$offset.'" stop-color="'.$colour.'"/>';
@@ -109,8 +110,8 @@ final class StoneBoardArt
         }
 
         return $svg
-            .'<radialGradient id="go-stone-shadow"><stop offset="0.7" stop-color="'.self::SHADOW.'" stop-opacity="0.5"/><stop offset="1" stop-color="'.self::SHADOW.'" stop-opacity="0"/></radialGradient>'
-            .'<linearGradient id="go-wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'.self::WOOD[0].'"/><stop offset="1" stop-color="'.self::WOOD[1].'"/></linearGradient>';
+            .'<radialGradient id="'.$id.'-stone-shadow"><stop offset="0.7" stop-color="'.self::SHADOW.'" stop-opacity="0.5"/><stop offset="1" stop-color="'.self::SHADOW.'" stop-opacity="0"/></radialGradient>'
+            .'<linearGradient id="'.$id.'-wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'.self::WOOD[0].'"/><stop offset="1" stop-color="'.self::WOOD[1].'"/></linearGradient>';
     }
 
     /** A count's points as a player reads them: "44.5", "7,5" in German, "39". */

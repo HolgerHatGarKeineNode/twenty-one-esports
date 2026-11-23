@@ -235,7 +235,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             $own = $mine->first(fn (Lineup $lineup): bool => $lineup->game === $theirs->game && $lineup->mode === $theirs->mode);
 
             return [
-                'game' => __(app(GameRegistry::class)->name($theirs->game)),
+                'game' => GameNames::game($theirs->game),
                 'url' => route('challenges.create', array_filter(['lineup' => $user instanceof User && $own?->isActingCaptain($user) === true ? $own->id : null, 'to' => $theirs->id])),
             ];
         })->all();
@@ -492,15 +492,22 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         <section aria-labelledby="tm-h" class="flex flex-col gap-3 rounded-[4px] border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="clan-team-matches">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ $teamLineups->every(fn (Lineup $lineup): bool => app(GameRegistry::class)->mode($lineup->game, $lineup->mode)?->timeControl === '600+5') ? __('Rapid 10+5 over 2 or 3 boards') : __('Rapid over 2 or 3 boards') }}</span></div>
-                @php($teamChallenges = $this->teamChallenges())
-                @if ($teamChallenges !== [])
-                    <div class="flex flex-wrap gap-2">
-                        @foreach ($teamChallenges as $teamChallenge)
-                            <a href="{{ $teamChallenge['url'] }}" class="{{ count($teamChallenges) === 1 ? 'inline-flex h-11 items-center' : 'inline-flex min-h-11 items-center py-2' }} rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ count($teamChallenges) === 1 ? __('Challenge to a team match') : __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}</a>
-                        @endforeach
-                    </div>
-                @endif
             </div>
+            {{--
+                Challenge (user's choice, 2026-11-23): "Challenge:" and one equal field per team lineup, named by its game.
+                Phone: the label on its line, the fields two by two, an odd last one across both columns. From 640 px: one
+                row, every field as wide as the others, at most 192 px, so a single field stays a button, not a bar (R15
+                verb, R16 rv-b2 44 px, R11 no wrapped label).
+            --}}
+            @php($teamChallenges = $this->teamChallenges())
+            @if ($teamChallenges !== [])
+                <div role="group" aria-labelledby="tm-ch" class="grid grid-cols-2 gap-2 sm:grid-cols-[auto_repeat(var(--fields),minmax(0,12rem))] sm:items-center" style="--fields: {{ count($teamChallenges) }}" data-test="team-challenges">
+                    <span id="tm-ch" class="col-span-2 text-xs font-bold text-ink-2 sm:col-span-1 sm:pr-2" data-test="team-challenges-label">{{ __('Challenge:') }}</span>
+                    @foreach ($teamChallenges as $teamChallenge)
+                        <a href="{{ $teamChallenge['url'] }}" aria-label="{{ __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}" @class(['rv-b2 min-w-0 px-3', 'max-sm:col-span-2' => $loop->last && $loop->odd]) data-test="challenge-team-match"><span class="truncate">{{ $teamChallenge['game'] }}</span></a>
+                    @endforeach
+                </div>
+            @endif
             @foreach ($teamLineups as $rapid)
                 @php($rapidSeats = $rapid->seats->filter(fn (LineupSeat $seat): bool => $seat->accepted_at !== null && $seat->user !== null))
                 <div class="flex flex-col gap-1.5" data-test="rapid-lineup">

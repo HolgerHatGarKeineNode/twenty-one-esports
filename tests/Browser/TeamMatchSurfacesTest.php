@@ -14,6 +14,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\GoOn;
 
 pest()->group('browser');
 
@@ -150,6 +151,44 @@ test('clan page, lobby entry and a team board page are measured at 390 and 1440 
         ->and($report[390]['lobby']['boxes']['[data-test=play-team-link]']['h'])->toBeGreaterThanOrEqual(44)
         ->and($report[1440]['lobby']['boxes']['[data-test=play-team-link]'])->toBeNull()
         ->and($report[1440]['lobby']['boxes']['[data-test=play-team]'])->not->toBeNull();
+});
+
+/** The challenge fields of the clan page: width, height and top of each, and the page's widths. */
+const SURFACES_CHALLENGES = <<<'JS'
+    () => ({
+        fields: [...document.querySelectorAll('[data-test=challenge-team-match]')].map((el) => { const r = el.getBoundingClientRect(); return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height), top: Math.round(r.top) }; }),
+        widths: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+    })
+    JS;
+
+test('the clan page lines up four team challenges two by two on a phone and in one row on a desktop, equally wide, at least 44 px high, without overflow or console noise', function () {
+    GoOn::play();
+    $clan = Clan::factory()->create(['name' => 'Orange Pill Squad']);
+
+    foreach ([['chess', 'rapid'], ['go-9', 'rapid'], ['go-13', 'rapid'], ['go-19', 'rapid']] as [$game, $mode]) {
+        Lineup::factory()->game($game, $mode)->ready(1)->create(['clan_id' => $clan->id]);
+    }
+
+    $report = [];
+
+    foreach ([390 => 2, 1280 => 1] as $width => $rows) {
+        $page = surfacesPage(User::factory()->create(), route('clans.show', $clan, false), $width);
+        surfacesRoundtrip($page);
+        $report[$width] = $page->evaluate(SURFACES_CHALLENGES) + ['errors' => $page->evaluate('() => window.__errors'), 'bad' => $page->evaluate(BrowserConsole::BAD_RESPONSES)];
+        $fields = collect($report[$width]['fields']);
+
+        expect($fields)->toHaveCount(4)
+            ->and($fields->max('w') - $fields->min('w'))->toBeLessThanOrEqual(1, "equal fields at {$width}")
+            ->and($fields->min('h'))->toBeGreaterThanOrEqual(44)
+            ->and($fields->pluck('top')->unique()->count())->toBe($rows, "rows at {$width}")
+            ->and($report[$width]['widths'][0])->toBeLessThanOrEqual($report[$width]['widths'][1])
+            ->and($report[$width]['errors'])->toBe([])
+            ->and($report[$width]['bad'])->toBe([]);
+    }
+
+    if ($file = env('TEAM_SURFACES_REPORT')) {
+        file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT));
+    }
 });
 
 test('the collectors of the team match surfaces see a thrown error and a 404 answer (positive control)', function () {

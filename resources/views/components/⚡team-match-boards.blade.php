@@ -2,9 +2,12 @@
 
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Games\BoardGame as BoardGameDefinition;
+use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\SeriesMatch;
 use App\Support\Board\BoardGameService;
+use App\Support\Board\StoneBoardDrawing;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\GameNames;
@@ -19,9 +22,10 @@ use Livewire\Component;
  * forfeit", "Team result"):
  * every board as a small board with both players and their clocks, the team
  * score over the boards that have ended, and a link to each board's own page,
- * where anyone with the link watches live as at any game. A Blockli board has
- * no small board here (the app draws none outside its page): its players,
- * clocks and move, and the link.
+ * where anyone with the link watches live as at any game. A Go board draws
+ * its stones on the server (x-board.stones, the drawing of its page and the
+ * stream); a Blockli board has no small board here: its players, clocks and
+ * move, and the link.
  *
  * Live: resources/js/teamMatchBoards.js listens on each board's public watch
  * channel (`game.{id}.watch`) and asks for a render after a move, and polls
@@ -74,6 +78,11 @@ new class extends Component {
         'poll' => 20,
     ];
     $grid = (int) $m->boards === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2';
+    // A board game's team match (Blockli, Go): its rules, read from the match, so a board whose game has not started
+    // yet is drawn as that game's board (Go: the empty grid), never as a chess board.
+    $definition = app(GameRegistry::class)->find($m->game);
+    $boardRules = $definition instanceof BoardGameDefinition ? $definition->rules() : null;
+    $boardKind = $boardRules !== null;
     // As resources/js/teamMatchBoards.js formats it between renders: m:ss, rounded up.
     $clock = fn (int $ms): string => intdiv((int) ceil(max(0, $ms) / 1000), 60).':'.str_pad((string) ((int) ceil(max(0, $ms) / 1000) % 60), 2, '0', STR_PAD_LEFT);
 @endphp
@@ -110,7 +119,11 @@ new class extends Component {
                     $clocks = $game === null ? null : ($boardGame ? $boardService->clocks($game, $nowMs) : $service->clocks($game, $nowMs));
                     $running = $game !== null && $game->isActive() && $game->clocksRunning() ? $turn : null;
                     $firstMove = $game !== null && $game->isActive() && ! $game->clocksRunning() ? $turn : null;
-                    $last = $game !== null && ! $boardGame && $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
+                    $last = $game !== null && $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
+                    // A Go board (NIP rev. 9.28) draws its stones as the game's page does (x-board.stones), the empty
+                    // board before its game starts; a Blockli board keeps its move line.
+                    $stoneView = $boardRules === null ? null : $boardRules->view($boardGame ? $boardRules->deserialize($game->position) : $boardRules->start());
+                    $stoneView = $stoneView !== null && StoneBoardDrawing::draws($stoneView) ? $stoneView : null;
                     $chip = match ($row['outcome']) {
                         'live' => [__('Live'), 'text-loss'],
                         'pending' => [__('Not started'), 'text-ink-2'],
@@ -125,8 +138,14 @@ new class extends Component {
                         <span class="text-xs font-bold {{ $chip[1] }}" data-test="team-board-state-{{ $row['board'] }}">{{ $chip[0] }}</span>
                     </span>
                     @foreach ([$black => 'b', $row['white'] => 'w'] as $side => $color)
-                        @if ($color === 'w' && $boardGame)
-                            <span class="text-xs text-ink-2" data-test="team-board-move-{{ $row['board'] }}">{{ $game->ply === 0 ? __('No move yet') : __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                        @if ($color === 'w' && $stoneView !== null)
+                            <x-board.stones class="w-full" :view="$stoneView" :last="$boardGame && $last ? $boardRules->path($last->move) : []" gid="go-tile-{{ $row['board'] }}"
+                                            :label="__('Board :n of :number', ['n' => $row['board'], 'number' => $m->label()])" data-test="team-board-stones-{{ $row['board'] }}" />
+                        @endif
+                        @if ($color === 'w' && $boardKind)
+                            @if ($boardGame)
+                                <span class="text-xs text-ink-2" data-test="team-board-move-{{ $row['board'] }}">{{ $game->ply === 0 ? __('No move yet') : __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                            @endif
                         @elseif ($color === 'w')
                             <x-match-dock.board class="w-full" :fen="$game?->fen ?? \App\Models\ChessGame::START_FEN" :last="$last ? [substr($last->uci, 0, 2), substr($last->uci, 2, 2)] : []"
                                                 :label="__('Board :n of :number', ['n' => $row['board'], 'number' => $m->label()])" data-test="team-board-fen-{{ $row['board'] }}" data-fen="{{ $game?->fen ?? \App\Models\ChessGame::START_FEN }}" />
