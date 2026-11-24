@@ -57,12 +57,14 @@ final class LoudnessNormalizer
         // The song's peak after loudnorm: its own raised by the linear gain, at most loudnorm's target.
         $peak = min((float) $measured['input_tp'] + self::LOUDNESS - (float) $measured['input_i'], self::LIMIT);
 
+        [$pre, $given] = self::withinLoudnormRange($measured);
+
         try {
             $limit = self::LIMIT;
 
             for ($try = 0; $try < self::TRIES; $try++) {
-                $chain = sprintf('loudnorm=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true,alimiter=limit=%.4f:level=false:latency=false',
-                    self::TARGET, $measured['input_i'], $measured['input_tp'], $measured['input_lra'], $measured['input_thresh'], $measured['target_offset'], 10 ** ($limit / 20));
+                $chain = $pre.sprintf('loudnorm=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true,alimiter=limit=%.4f:level=false:latency=false',
+                    self::TARGET, $given['input_i'], $given['input_tp'], $given['input_lra'], $given['input_thresh'], $given['target_offset'], 10 ** ($limit / 20));
 
                 $encode = Process::timeout(1800)->run(['nice', '-n', '19', $this->ffmpeg, '-y', '-hide_banner', '-nostats', '-i', $input, '-map', '0:a:0',
                     '-filter:a', $chain, '-ar', '44100', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', $temp]);
@@ -116,6 +118,32 @@ final class LoudnessNormalizer
 
         /** @var array{input_i: string, input_tp: string, input_lra: string, input_thresh: string, target_offset: string} */
         return array_map('strval', array_intersect_key($data, array_flip($keys)));
+    }
+
+    /**
+     * loudnorm refuses `measured_I` above 0 LUFS ("Numerical result out of range", the encode never starts), and a
+     * source can measure above it: a clipped or float master whose peaks pass full scale (ffmpeg n9.1 keeps a +7 dBFS
+     * AAC fixture at +1.8 LUFS). Such a song is brought to the target by a gain in front of loudnorm, and the
+     * measurement is handed over shifted by the same gain (to the target, which is in range), so loudnorm's linear
+     * pass has nothing left but the song's own correction. Songs within range pass unchanged.
+     *
+     * @param  array{input_i: string, input_tp: string, input_lra: string, input_thresh: string, target_offset: string}  $measured
+     * @return array{0: string, 1: array{input_i: string, input_tp: string, input_lra: string, input_thresh: string, target_offset: string}} the filter prefix and the measurement loudnorm is given
+     */
+    private static function withinLoudnormRange(array $measured): array
+    {
+        if ((float) $measured['input_i'] <= 0.0) {
+            return ['', $measured];
+        }
+
+        $gain = self::LOUDNESS - (float) $measured['input_i'];
+
+        return [sprintf('volume=%.4FdB,', $gain), [
+            ...$measured,
+            'input_i' => sprintf('%.2F', self::LOUDNESS),
+            'input_tp' => sprintf('%.2F', (float) $measured['input_tp'] + $gain),
+            'input_thresh' => sprintf('%.2F', (float) $measured['input_thresh'] + $gain),
+        ]];
     }
 
     private static function tail(string $output): string

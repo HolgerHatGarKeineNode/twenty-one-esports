@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\TwentyOne\Stream\AudioProbe;
+use App\Support\TwentyOne\Stream\LoudnessNormalizer;
 use App\Support\TwentyOne\Stream\MusicCatalog;
 use App\Support\TwentyOne\Stream\MusicCredits;
 use Illuminate\Support\Facades\File;
@@ -243,4 +245,19 @@ test('renormalize re-makes a loud library song from its original under the same 
     expect(sha1_file($music.'/instrumental/12__v1.m4a'))->not->toBe($before)
         ->and(MusicCatalog::track('instrumental/12__v1.m4a')['true_peak'])->toBeLessThanOrEqual(-1.0)
         ->and(MusicCatalog::track('instrumental/12__v1.m4a')['lufs'])->toEqualWithDelta(-15.0, 1.0);
+});
+
+test('a source that measures above 0 LUFS is still normalised, though loudnorm refuses a measured_I above 0', function () {
+    // Float WAV, so the level survives any encoder: lavfi's sine runs at 1/8 amplitude, so volume 24 is amplitude 3 and reads above 0 LUFS.
+    $input = $this->root.'/upload/over-full-scale.wav';
+    File::ensureDirectoryExists(dirname($input));
+    Process::run(['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-filter:a', 'volume=24.0', '-ac', '2', '-c:a', 'pcm_f32le', $input])->throw();
+    $source = AudioProbe::loudness(Process::run(['ffmpeg', '-hide_banner', '-nostats', '-i', $input, '-filter:a', 'ebur128=peak=true', '-f', 'null', '-'])->errorOutput());
+    expect($source['lufs'])->toBeGreaterThan(0.0);
+
+    $result = (new LoudnessNormalizer)->normalize($input, $this->root.'/over.m4a');
+
+    expect(is_file($this->root.'/over.m4a'))->toBeTrue()
+        ->and($result['lufs'])->toEqualWithDelta(-15.0, 1.0)
+        ->and($result['true_peak'])->toBeLessThanOrEqual(-1.0);
 });
