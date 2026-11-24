@@ -138,8 +138,8 @@ test('the board plans the next season through the page: defaults, a logged row p
     $start = CarbonImmutable::now()->addDays(2)->setTime(18, 0);
 
     $page = Livewire::actingAs($this->board)->test('pages::admin.season')
-        // Defaults: the next slug's name, the Pre-Season's 24 weeks within 8 to 26, f = 0.5.
-        ->assertSet('planName', 'Season 1')
+        // Defaults: the next season's display name (pre-season shows as Season 1, so season-1 is Season 2), the Pre-Season's 24 weeks within 8 to 26, f = 0.5.
+        ->assertSet('planName', 'Season 2')
         ->assertSet('planWeeks', '24')
         ->assertSet('planFactor', '0.5')
         ->set('planName', 'Winter Season')

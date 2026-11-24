@@ -5,6 +5,7 @@ namespace App\Support\SeasonChain;
 use App\Models\Season;
 use App\Models\SeasonPlan;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
 use App\Support\Board;
 use App\Support\Rating\SoftReset;
 use Carbon\CarbonImmutable;
@@ -64,7 +65,7 @@ final class SeasonPlans
         $nextHour = CarbonImmutable::now()->addHour()->startOfHour();
 
         return [
-            'name' => __('Season :number', ['number' => substr(self::nextSlug($after), 7)]),
+            'name' => BadgeCopy::season(self::nextSlug($after)),
             'starts_at' => $end->isFuture() ? $end : $nextHour,
             'weeks' => max(self::minWeeks(), min(self::maxWeeks(), ChainDraft::current()['weeks'])),
             'reset_factor_milli' => 500,
