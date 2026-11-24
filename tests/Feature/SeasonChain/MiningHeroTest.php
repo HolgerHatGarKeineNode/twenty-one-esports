@@ -129,8 +129,9 @@ test('a player below the trust minimum sees a red trust step that links to the o
 
     $hero = heroOf($anna[0]);
 
-    expect($hero['primary'])->toBe(['rated', 'Play rated Chess'])
-        ->and($hero['path']['trust'])->toBe(['bad', 'Trust rank 12, needs 50 How it rises', route('settings.opponents')])
+    // The first open step is the primary action (design-lead review, finding 4).
+    expect($hero['primary'])->toBe(['step', 'Raise your trust rank'])
+        ->and($hero['path']['trust'])->toBe(['bad', 'Trust rank 12, needs 50 How it rises', route('settings.opponents').'#trust'])
         ->and($hero['path']['opponents'][0])->toBe('ok');
 });
 

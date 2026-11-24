@@ -270,8 +270,12 @@ test('the chess lobby names the profile standard, not a bar, and links to the mi
     app()->bind(TrustFacts::class, TrustedFacts::class);
     $fresh = psPlayer(['created_at' => now()->subDays(2), 'picture' => null]);
 
+    // The missing steps are the path card's ("Your path to Season 1"), each with its fix; the line under the choice would repeat
+    // them and is left out while the card shows steps (design-lead review, finding 3).
     Livewire\Livewire::actingAs($fresh)->test('pages::chess.lobby')
         ->assertSee('profile not ready')
-        ->assertSee(route('settings.opponents').'#rated-standard', false)
+        ->assertSee('data-key="known" data-done="false"', false)
+        ->assertSee('href="'.route('settings.profile').'" class="rv-b2 is-sm', false)
+        ->assertDontSee('data-test="kind-reason"', false)
         ->assertDontSee('>barred<', false);
 });

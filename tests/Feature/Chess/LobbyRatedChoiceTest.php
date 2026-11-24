@@ -22,7 +22,6 @@ use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\Opponents;
-use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use App\Support\SeasonChain\TrustFacts;
 use Illuminate\Support\Facades\Queue;
@@ -215,6 +214,9 @@ function ratedPanel(?User $user): array
         'badge' => $text('/data-test="kind-rated-badge">(.*?)<\/span>/s'),
         'line' => $text('/data-test="kind-reason"[^>]*>\s*<span[^>]*>(.*?)<\/span>/s'),
         'href' => $attribute('/<a[^>]*\shref="([^"]*)"[^>]*data-test="kind-reason-link"/'),
+        // The fix of each open step of "Your path to Season 1" under the panels.
+        'steps' => preg_match_all('/data-key="([a-z]+)" data-done="false">.*?<a href="([^"]+)"[^>]*data-test="season-path-fix"/s', $html, $fixes) > 0
+            ? array_combine($fixes[1], array_map(html_entity_decode(...), $fixes[2])) : [],
     ];
 }
 
@@ -266,12 +268,14 @@ test('closed, the word on Rated names the kind of reason and the line under the 
     expect(ratedPanel($anna))->toMatchArray(['kind' => 'closed', 'badge' => 'not open yet', 'line' => 'Rated chess is not open yet. Rapid and blitz games are casual for now.', 'href' => null]);
     config(['esports.chess.rated_queue' => true]);
 
-    // Below the trust minimum: the line names the minimum and how it rises, never a figure about the player.
+    // Below the trust minimum: the badge names the kind; what to do is the trust step of the path card under the panels, which
+    // leads to the opponents page's #trust. The line under the choice would say it twice and is left out (design-lead review,
+    // finding 3).
     trustRunWith([$anna->pubkey => 20, $bert->pubkey => 100]);
-    expect(ratedPanel($anna))->toMatchArray(['kind' => 'trust', 'badge' => 'Trusted needed', 'href' => route('settings.opponents'),
-        'line' => 'Rated from trust rank '.RatedTrustGate::minimum().'. It rises when members add you as an opponent.']);
+    expect(ratedPanel($anna))->toMatchArray(['kind' => 'trust', 'badge' => 'Trusted needed', 'line' => '', 'href' => null])
+        ->and(ratedPanel($anna)['steps'])->toMatchArray(['trust' => route('settings.opponents').'#trust']);
 
-    // Trusted, but nobody listed back: the opponent is missing.
+    // Trusted, but nobody listed back: the opponent is missing, and the path card's opponents step leads to the opponents page.
     listOpponent($anna, $annaSigner, $bert);
-    expect(ratedPanel($bert))->toMatchArray(['kind' => 'opponent', 'badge' => 'opponent missing', 'line' => 'Rated needs an opponent who adds you back.', 'href' => route('settings.opponents')]);
+    expect(ratedPanel($bert))->toMatchArray(['kind' => 'opponent', 'badge' => 'opponent missing', 'line' => '', 'href' => null, 'steps' => ['opponents' => route('settings.opponents')]]);
 });

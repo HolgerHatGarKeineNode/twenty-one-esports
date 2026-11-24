@@ -193,7 +193,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
             </div>
             <div class="flex gap-3 rounded-lg p-4 shadow-ring">
                 <span class="mt-1.5 size-4 shrink-0 rounded-full bg-ink-3" aria-hidden="true"></span>
-                <span class="flex flex-col gap-2"><b class="font-display text-lg text-ink-2">{{ __('Rated') }}</b><span class="text-[13px] leading-[1.6] text-ink-2">{{ __('Rated games need a Trusted account and a connection with the other captain. Casual games with members, and players who add you back, raise your trust.') }}</span></span>
+                <span class="flex flex-col gap-2"><b class="font-display text-lg text-ink-2">{{ __('Rated') }}</b><span class="text-[13px] leading-[1.6] text-ink-2">{{ __('Rated games need a Trusted account and a connection with the other captain. Your trust rises when members or Trusted players list you as an opponent.') }}</span></span>
             </div>
         </div>
     </section>

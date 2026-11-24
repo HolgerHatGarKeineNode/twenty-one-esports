@@ -5,9 +5,11 @@
     runs ($season['live']); it renders nothing otherwise.
 
     $season: HomeBoard::season(); $viewer: the viewer or null (for the time zone); $test: the data-test prefix;
-    $how: where "How to play" leads (plan "Season vs. Casual", P6: the page's x-season.how).
+    $how: where "How to play" leads (plan "Season vs. Casual", P6: the page's x-season.how); $keys: false leaves out
+    what a win mines per game, for a page that lists it in its own season card (home; design-lead review, finding 6).
+    The heading names the live season ("Season 1 · Block 4"), never a bare "Season".
 --}}
-@props(['season', 'viewer' => null, 'test' => 'season-band', 'how' => '#season-how'])
+@props(['season', 'viewer' => null, 'test' => 'season-band', 'how' => '#season-how', 'keys' => true])
 
 @php
     use App\Support\Engagement\HomeBoard;
@@ -17,7 +19,8 @@
     use App\Support\SeasonChain\Seasons;
 
     $genesis = $season['live'] ? Seasons::live()?->genesis_at : null;
-    $open = array_values(array_filter($season['keys'], fn (array $key): bool => ! $key['closed']));
+    $open = $keys ? array_values(array_filter($season['keys'], fn (array $key): bool => ! $key['closed'])) : [];
+    $seasonName = ($liveSlug = \App\Support\Series\Ladders::season()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSlug);
 @endphp
 
 @if ($season['live'])
@@ -29,7 +32,7 @@
                     <span class="rv-m" data-test="{{ $test }}-genesis">{{ __('Block 0 mined on :when', ['when' => Formats::date($genesis, true, PreSeason::timezoneFor($viewer))]) }}</span>
                 @endif
             </span>
-            <h2 id="{{ $test }}-h" class="rv-h2 max-lg:text-[20px]">{{ __('Season') }} <span class="text-btc tabular-nums" data-test="{{ $test }}-height">{{ __('Block :height', ['height' => HomeBoard::sats((int) $season['height'])]) }}</span></h2>
+            <h2 id="{{ $test }}-h" class="rv-h2 max-lg:text-[20px]" data-test="{{ $test }}-heading">{{ $seasonName }} · <span class="text-btc tabular-nums" data-test="{{ $test }}-height">{{ __('Block :height', ['height' => HomeBoard::sats((int) $season['height'])]) }}</span></h2>
             <span class="text-[13px] text-ink-2">{{ __('Every fair rated win mines the next block of the season chain.') }}</span>
             {{-- Plan P6: what rated needs, in one line, and the way to the explainer. --}}
             <span class="text-[13px] text-ink-2" data-test="{{ $test }}-needs">{{ __('Rated: two Trusted players who list each other.') }} <a href="{{ $how }}" class="rv-lk whitespace-nowrap" data-test="{{ $test }}-how">{{ __('How it works') }}</a></span>

@@ -168,14 +168,19 @@ test('a correspondence challenge preselects rated for a pair that can play rated
 
     Livewire::actingAs($anna[0])->test('pages::board.correspondence', ['board' => NineMensMorris::SLUG, 'to' => $cleo->npub])
         ->assertSet('rated', false)
-        ->assertSee('data-test="rated-why"', false)
+        // The path card under the send button names the missing step; the line under the choice would repeat it (design-lead review, finding 3).
+        ->assertSee('data-key="opponent" data-done="false"', false)
+        ->assertDontSee('data-test="rated-why"', false)
         ->assertDontSee('You and Cleo can play rated', false);
 });
 
 test('the primary button of /mining names and links the open ladder game the player played most', function () {
     openSeason();
-    [$anna] = choicePlayer('Anna');
-    [$bert] = choicePlayer('Bert');
+    // Eligible (Trusted, a mutual opponent): the game is the primary action, rated.
+    choiceRanks(80);
+    [$anna, $annaSigner] = choicePlayer('Anna');
+    [$bert, $bertSigner] = choicePlayer('Bert');
+    choiceListEachOther([$anna, $annaSigner], [$bert, $bertSigner]);
     choiceBoardGames(3, NineMensMorris::SLUG, 'correspondence', $anna, $bert);
     ChessGame::factory()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
 
@@ -196,5 +201,6 @@ test('without a game of their own the button leads to the game the league played
 
     $html = (string) $this->actingAs($anna)->get(route('mining'))->assertOk()->getContent();
 
-    expect($html)->toContain('data-test="mining-primary" data-variant="rated" data-game="'.Blockli::SLUG.'"');
+    // Anna cannot play rated yet: her first open step is the primary action, the game the casual secondary one (design-lead review, finding 4).
+    expect($html)->toContain('data-test="mining-secondary" data-game="'.Blockli::SLUG.'"');
 });

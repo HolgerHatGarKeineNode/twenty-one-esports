@@ -372,10 +372,10 @@ new #[Layout('layouts::app')] class extends Component {
         : [__('Open until'), $this->when($link->expires_at)];
 
     $steps = match ($boardDaily ? InviteLinkType::Daily : ($type === InviteLinkType::Board ? InviteLinkType::Blitz : $type)) {
-        InviteLinkType::Blitz, InviteLinkType::Rapid => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
-        InviteLinkType::Daily => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land in the game'), __('Make your move whenever you like. You get a notification when it is your turn again.')], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
+        InviteLinkType::Blitz, InviteLinkType::Rapid => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games work right away. Your trust rises when members or Trusted players list you as an opponent.')]],
+        InviteLinkType::Daily => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land in the game'), __('Make your move whenever you like. You get a notification when it is your turn again.')], [__('Play your first game'), __('Casual games work right away. Your trust rises when members or Trusted players list you as an opponent.')]],
         InviteLinkType::Series => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Pick your lineup and a start'), __('Take the challenge with a lineup you captain. No team yet? Start a clan first.')], [__('Play the series'), __(':clan gets a ping, the match room opens for both teams.', ['clan' => $clan?->name])]],
-        InviteLinkType::Clan => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Your request goes to :clan', ['clan' => $clan?->name]), __('A captain of :clan looks at your profile and confirms. You get a notification.', ['clan' => $clan?->name])], [__('Play for :clan', ['clan' => $clan?->name]), __('Casual games build your trust first.')]],
+        InviteLinkType::Clan => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Your request goes to :clan', ['clan' => $clan?->name]), __('A captain of :clan looks at your profile and confirms. You get a notification.', ['clan' => $clan?->name])], [__('Play for :clan', ['clan' => $clan?->name]), __('Your trust rises when members or Trusted players list you as an opponent.')]],
     };
 
     $closedCta = match ($type) {
@@ -561,7 +561,7 @@ new #[Layout('layouts::app')] class extends Component {
                 @if ($request->status === JoinRequestStatus::Listed && $request->clanInvite)
                     <a href="{{ route('invites.show', $request->clanInvite) }}" class="{{ $primary }}" data-test="confirm-join">{{ __('Confirm and join') }}</a>
                 @else
-                    <p class="m-0 text-[13px] leading-[1.6] text-ink-2">{{ __('No need to wait around: casual games work right away and build your trust.') }}</p>
+                    <p class="m-0 text-[13px] leading-[1.6] text-ink-2">{{ __('No need to wait around: casual games work right away.') }}</p>
                     <a href="{{ route('chess.lobby') }}" class="{{ $primary }}"><x-icon name="pawn" :size="18" />{{ __('Play a casual game') }}</a>
                 @endif
                 @if ($request->status->isOpen())

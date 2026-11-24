@@ -28,7 +28,11 @@ use Livewire\Component;
  * change dispatches `opponent-list-changed`, so such a notice re-renders.
  *
  * Plan "Season vs. Casual", P5: `afterGame` (x-opponents.after-game, the end
- * of a game) says what a mutual listing means there: rated next time.
+ * of a game) says what a mutual listing means there: rated next time, only
+ * while `ratedNext` (the viewer meets every other step of the path; design-lead
+ * review, finding 2), and leaves the note under the button to the card's own
+ * line. `note` false drops that note too (a list of buttons, the opponents
+ * page's #trust section).
  *
  * D17 (plan "Profile standard and impersonation"): a player below the
  * profile standard or under an impersonation hold carries the same warning
@@ -45,11 +49,19 @@ new class extends Component {
     #[Locked]
     public bool $afterGame = false;
 
-    public function mount(User $player, bool $inline = false, bool $afterGame = false): void
+    #[Locked]
+    public bool $ratedNext = true;
+
+    #[Locked]
+    public bool $note = true;
+
+    public function mount(User $player, bool $inline = false, bool $afterGame = false, bool $ratedNext = true, bool $note = true): void
     {
         $this->playerId = $player->id;
         $this->inline = $inline;
         $this->afterGame = $afterGame;
+        $this->ratedNext = $ratedNext;
+        $this->note = $note;
     }
 
     /**
@@ -169,7 +181,7 @@ new class extends Component {
                 <div class="flex min-w-0 flex-wrap items-center gap-2" @if ($warning) x-show="! confirming" @endif>
                     @if ($mine && $theirs)
                         <span role="status" @class(['inline-flex min-w-0 items-center gap-2 rounded-md bg-win-tint px-3.5 text-[13px] text-win shadow-ring-win', 'h-11' => ! $afterGame, 'min-h-11 py-2' => $afterGame]) data-test="opponent-mutual">
-                            <x-icon name="check" :size="16" class="shrink-0" /><span @class(['truncate' => ! $afterGame, 'min-w-0 [overflow-wrap:anywhere]' => $afterGame])>{{ $afterGame ? __('Mutual opponents, rated next time') : __('You list each other') }}</span>
+                            <x-icon name="check" :size="16" class="shrink-0" /><span @class(['truncate' => ! $afterGame, 'min-w-0 [overflow-wrap:anywhere]' => $afterGame])>{{ $afterGame && $ratedNext ? __('Mutual opponents, rated next time') : __('You list each other') }}</span>
                         </span>
                     @elseif ($mine)
                         <span role="status" class="inline-flex h-11 min-w-0 items-center gap-2 rounded-md bg-well px-3.5 text-[13px] text-ink-2 shadow-ring-hairline" data-test="opponent-listed">
@@ -187,6 +199,7 @@ new class extends Component {
                         </button>
                     @endif
                 </div>
+                @if ($note && ! $afterGame)
                 <span @class(["text-xs leading-normal text-ink-3", "max-w-[68ch]" => $inline]) data-test="opponent-note">
                     @if ($mine && $theirs)
                         {{ __('Rated games between you are possible. Opponent lists are public on Nostr.') }}
@@ -198,6 +211,7 @@ new class extends Component {
                         {{ __('Rated games need you to list each other. Opponent lists are public on Nostr.') }}
                     @endif
                 </span>
+                @endif
             </div>
             @error('opponent')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>

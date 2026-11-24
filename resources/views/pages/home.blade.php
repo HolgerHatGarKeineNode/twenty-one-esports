@@ -63,7 +63,8 @@
     {{-- The live season before everything the boards draw (user 2026-11-20: Block 0 is out and the season comes first). --}}
     @if ($season['live'])
         <div class="mx-auto w-full max-w-[1440px] px-4 pt-4 lg:px-12 lg:pt-6">
-            <x-ui.season-band :season="$season" :viewer="$user" test="home-season-band" />
+            {{-- What a win mines per game stands once, in the season card of the right column (design-lead review, finding 6). --}}
+            <x-ui.season-band :season="$season" :viewer="$user" test="home-season-band" :keys="false" />
         </div>
     @endif
 

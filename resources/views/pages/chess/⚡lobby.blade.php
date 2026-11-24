@@ -243,13 +243,14 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     default => __('not open yet'),
                 },
                 'line' => match ($reason['kind']) {
-                    'trust' => __('Rated from trust rank :minimum. It rises when members add you as an opponent.', ['minimum' => RatedTrustGate::minimum()]),
+                    'trust' => __('Rated from trust rank :minimum. It rises when members or Trusted players list you as an opponent.', ['minimum' => RatedTrustGate::minimum()]),
                     'opponent' => __('Rated needs an opponent who adds you back.'),
                     default => $reason['message'],
                 },
                 'href' => match ($reason['kind']) {
                     'login' => route('login'),
-                    'trust', 'opponent' => route('settings.opponents'),
+                    'trust' => route('settings.opponents').'#trust',
+                    'opponent' => route('settings.opponents'),
                     'standard' => route('settings.opponents').'#rated-standard',
                     default => null,
                 },

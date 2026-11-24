@@ -155,7 +155,7 @@ final class RulesPage
                 __('Casual matches move only the casual rating. They never count for a season, a rank, Block Height or Clan Hashrate.'),
                 __('Rated play opens with Block 0, the start of a season. Before Block 0 and between seasons every match is casual.'),
                 __('A match stays what it was when it started: casual stays casual, even if it ends in a season.'),
-                __('Rated play needs a Trusted account. Casual games with members, and players who list you back as an opponent, raise your trust.'),
+                __('Rated play needs a Trusted account. Your trust rises when members or Trusted players list you as an opponent.'),
                 __('The same two opponents count for a rated ladder at most :count times a day.', ['count' => (int) $rating['daily_pair_limit']]),
             ],
             'links' => [[__('The season and mining'), route('mining')], [__('How results are verified'), route('protocol')]],

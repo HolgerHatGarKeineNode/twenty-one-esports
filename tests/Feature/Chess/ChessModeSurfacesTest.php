@@ -76,7 +76,7 @@ test('the registry has the modes this guard walks: rapid first, daily last, ever
         ->and(array_map(ChessModes::label(...), ChessModes::all()))->toBe(['Rapid 10+5', 'Blitz 5+3', 'Daily']);
 });
 
-test('profile chips: one chip per chess mode the player has a result in, the default mode always', function () {
+test('profile chips: one chip per chess mode the player has a result in, none without a result', function () {
     $player = User::factory()->create();
 
     foreach (ChessModes::all() as $mode) {
@@ -88,8 +88,8 @@ test('profile chips: one chip per chess mode the player has a result in, the def
 
     expect(surfaceModes($html, 'header-rating', 'data-chess-mode'))->toBe(ChessModes::all())
         ->and(array_column(Ratings::chipsFor($player), 'label'))->toContain(...array_map(fn (string $mode): string => BadgeCopy::ladder('chess', $mode), ChessModes::all()))
-        // Without results only the default mode's chip.
-        ->and(array_column(Ratings::chipsFor(User::factory()->create()), 'mode'))->toBe([ChessModes::DEFAULT]);
+        // Without results no chip at all (design-lead review, finding 7: no forced "Chess rapid 1,000 · provisional").
+        ->and(Ratings::chipsFor(User::factory()->create()))->toBe([]);
 });
 
 test('home counts every live mode as live, and /games lists and filters every live mode by name', function () {

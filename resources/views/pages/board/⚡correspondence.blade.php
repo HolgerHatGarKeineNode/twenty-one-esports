@@ -380,6 +380,11 @@ new #[Layout('layouts::app')] class extends Component {
     $ratedRefusal = $this->ratedOffered ? $this->ratedRefusal : null;
     $ownRefusal = $ratedRefusal !== null && $ratedRefusal['reason'] === 'rated_unavailable';
     $members = BoardChallenges::members($slug);
+    // "Your path to Season 1" under the send button (plan P4), read once: while it lists the steps, the line under the
+    // choice would repeat them (design-lead review, finding 3).
+    $seasonPath = $me instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($me, $slug, BoardGame::CORRESPONDENCE, $opponent) : null;
+    $pathShowsSteps = ($seasonPath['state'] ?? null) === 'steps';
+    $seasonName = ($liveSeason = \App\Support\Series\Ladders::season()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSeason);
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pb-10" data-test="board-correspondence">
@@ -531,8 +536,9 @@ new #[Layout('layouts::app')] class extends Component {
                             <button type="button" role="radio" wire:click="$set('rated', false)" aria-checked="{{ $rated ? 'false' : 'true' }}" data-test="type-casual"
                                     @class(['h-11 cursor-pointer rounded-md border bg-ground text-[13px] text-ink', 'border-btc' => ! $rated, 'border-line' => $rated])>{{ __('Casual') }}</button>
                             <button type="button" role="radio" wire:click="$set('rated', true)" aria-checked="{{ $rated ? 'true' : 'false' }}" @disabled($ownRefusal) data-test="type-rated"
-                                    @class(['h-11 cursor-pointer rounded-md border bg-ground text-[13px] text-ink disabled:cursor-not-allowed disabled:opacity-50', 'border-btc' => $rated, 'border-line' => ! $rated])>{{ __('Rated') }}</button>
+                                    @class(['h-11 cursor-pointer rounded-md border bg-ground text-[13px] text-ink disabled:cursor-not-allowed disabled:opacity-50', 'border-btc' => $rated, 'border-line' => ! $rated])>{{ __(':season (rated)', ['season' => $seasonName]) }}</button>
                         </div>
+                        @unless ($pathShowsSteps)
                         <span class="text-xs leading-normal text-ink-2" data-test="rated-why">{{ match (true) {
                             $ownRefusal => $ratedRefusal['message'],
                             $ratedRefusal !== null => RatedTrustGate::message($ratedRefusal['message'], [$me->pubkey, $opponent?->pubkey ?? '']),
@@ -544,6 +550,7 @@ new #[Layout('layouts::app')] class extends Component {
                                 <a href="{{ route('settings.opponents') }}" class="text-ink underline underline-offset-2 hover:text-btc-hi" data-test="rated-why-opponents">{{ __('Your opponents') }}</a>
                             @endif
                         </span>
+                        @endunless
                     </div>
                     {{-- P57: the picked opponent and this player do not list each other; say so, and put the fix next to it. --}}
                     @if ($rated && $opponent && $ratedRefusal !== null && $ratedRefusal['message'] === RatedTrustGate::NOT_CONNECTED)
@@ -552,9 +559,6 @@ new #[Layout('layouts::app')] class extends Component {
                         </x-opponents.needs-mutual>
                     @endif
                 @endif
-                {{-- "Your path to Season 1" (plan P4): what is missing for rated play, against the picked opponent once there is one. --}}
-                <x-season.path :game="$slug" :mode="BoardGame::CORRESPONDENCE" :opponent="$opponent" />
-
                 <div class="flex flex-col gap-2">
                     <span class="flex flex-wrap items-baseline justify-between gap-2"><label for="corr-message" class="text-xs text-ink-2">{{ __('Message') }}</label><span class="text-xs text-ink-3">{{ __('optional, up to 140 characters') }}</span></span>
                     <textarea id="corr-message" wire:model="message" maxlength="140" rows="2" data-test="challenge-message"
@@ -568,6 +572,8 @@ new #[Layout('layouts::app')] class extends Component {
                     <x-icon name="shield-check" :size="18" class="shrink-0" /><span class="min-w-0 text-center wrap-anywhere">{{ $opponent ? __('Challenge :name', ['name' => $opponent->displayName()]) : __('Send challenge') }}</span>
                 </button>
                 <span class="text-xs leading-normal text-ink-2">{{ __('The other player has :hours h to accept. You can withdraw the challenge while it is open.', ['hours' => $hours]) }}</span>
+                {{-- "Your path to Season 1" (plan P4): what is missing for rated play, against the picked opponent once there is one; under the send button, so the form reads top to bottom (design-lead review, finding 3). --}}
+                <x-season.path :game="$slug" :mode="BoardGame::CORRESPONDENCE" :opponent="$opponent" :path="$seasonPath" />
                 {{-- As chess's challenge page offers live play with a friend: the lobby's "Online now", where a player who looks for a game can be invited.
                      Only for a board game with live modes (Blockli: blitz and rapid, user 2026-10-11). --}}
                 @php($liveDefinition = app(\App\Games\GameRegistry::class)->find($slug))

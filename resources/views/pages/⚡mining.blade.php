@@ -109,10 +109,11 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     }
 
     /**
-     * The viewer's chess blocks today against the daily limit (plan "mining-page-clarity" P2, canvas SeasonLive, NEU
+     * The viewer's blocks today against the daily limit (plan "mining-page-clarity" P2, canvas SeasonLive, NEU
      * (Scope) approved 2026-11-20), the one chip left beside "Your path to Season 1" (plan "Season vs. Casual", P4:
-     * x-season.path took over the trust and opponents chips, with every step and its fix). Only the viewer sees it,
-     * never a guest or another player; null without a daily limit. Scalars only.
+     * x-season.path took over the trust and opponents chips, with every step and its fix), for the game the primary
+     * button leads to (SeasonPath::gameToMine(); chess without one; design-lead review, finding 4). Only the viewer
+     * sees it, never a guest or another player; null without a daily limit. Scalars only.
      *
      * @return list<array{key: string, state: 'ok'|'bad'|'wait', label: string, href: string|null, cta: string|null, title: string|null}>|null
      */
@@ -129,11 +130,12 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         $chips = [];
 
         $inForce = $this->chain['in_force'];
-        $limit = $inForce->dailyLimitFor('chess');
+        $game = SeasonPath::gameToMine($user)['slug'] ?? 'chess';
+        $limit = $inForce->dailyLimitFor($game);
 
         if ($limit !== null) {
             // Consensus rule 5 counts a player's blocks of the game's share group per UTC day.
-            $shareKey = $inForce->shareKey('chess');
+            $shareKey = $inForce->shareKey($game);
             $today = $season->attestations()->whereNotNull('height')->where('attested_at', '>=', CarbonImmutable::now()->utc()->startOfDay())->get(['game', 'candidate'])
                 ->filter(fn ($block): bool => $inForce->shareKey((string) $block->game) === $shareKey && in_array($user->pubkey, $block->winners(), true))->count();
             $chips[] = ['key' => 'today', 'state' => $today >= $limit ? 'bad' : 'ok', 'label' => __(':game today :count of :limit blocks', ['game' => ChainOverview::gameLabel($shareKey), 'count' => $today, 'limit' => $limit]),
@@ -299,10 +301,17 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                     @if ($viewer instanceof User)
                         {{-- Plan "Season vs. Casual", P4: the open-ladder game this player played most (league-wide over 14 days without one), by name. --}}
+                        {{-- Design-lead review, finding 4: a player who cannot play rated yet gets the first open step of the path as the
+                             primary action (its fix), and the game as the secondary one, casual. --}}
                         @php
                             $toMine = SeasonPath::gameToMine($viewer);
+                            $minePath = app(SeasonPath::class)->for($viewer);
+                            $firstStep = $minePath['state'] === 'steps' ? collect($minePath['steps'])->first(fn (array $step): bool => ! $step['done'] && $step['href'] !== null) : null;
                         @endphp
-                        @if ($toMine !== null)
+                        @if ($toMine !== null && $firstStep !== null)
+                            <a href="{{ $firstStep['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="step" data-step="{{ $firstStep['key'] }}">{{ $firstStep['key'] === 'trust' ? __('Raise your trust rank') : $firstStep['cta'] }}</a>
+                            <a href="{{ $toMine['href'] }}" class="rv-b2 h-[52px] px-6" data-test="mining-secondary" data-game="{{ $toMine['slug'] }}">{{ __('Play :game casual', ['game' => $toMine['name']]) }}</a>
+                        @elseif ($toMine !== null)
                             <a href="{{ $toMine['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated" data-game="{{ $toMine['slug'] }}">{{ $toMine['rated'] ? __('Play rated :game', ['game' => $toMine['name']]) : __('Play :game casual', ['game' => $toMine['name']]) }}</a>
                         @else
                             <a href="{{ route('chess.lobby') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated">{{ RatedChess::offered() ? __('Play rated chess') : __('Play a casual game') }}</a>
@@ -314,7 +323,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                        x-data x-on:click="const d = document.getElementById('season-reference'); (d?.tagName === 'DETAILS' ? d : d?.querySelector('details'))?.setAttribute('open', '')">{{ __('How mining works') }}</a>
                 </div>
                 @if ($viewer instanceof User)
-                    <x-season.path compact />
+                    <x-season.path compact :path="$minePath ?? null" />
                 @endif
                 @if ($standing !== null)
                     <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('Your standing for rated play') }}" data-test="mining-standing">

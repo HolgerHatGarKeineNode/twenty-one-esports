@@ -11,6 +11,10 @@
     `href`: where the add happens (null: the opponent's player page, and the opponents page for a request).
     `textClass`: the classes of the two text states; the link takes the component's attributes. Renders nothing for a
     guest, a bot seat (no opponent), the viewer, or before opponent lists open.
+
+    "Rated next time" only for a viewer who meets every other step of the path (design-lead review, finding 2): with
+    a profile or trust step open, the two text states give way to what is missing ("You still need: Trust rank 0/50",
+    a link to the opponents page's #trust; SeasonPath::missing()).
 --}}
 @php
     $viewer ??= auth()->user();
@@ -18,10 +22,15 @@
         && \App\Support\SeasonChain\OpponentLists::forLeague() !== null;
     $relation = $show ? app(\App\Support\SeasonChain\Opponents::class)->relation($viewer, $opponent) : null;
     $name = $show ? $opponent->displayName() : '';
+    $missing = in_array($relation, ['mutual', 'listed'], true) ? app(\App\Support\SeasonChain\SeasonPath::class)->missing($viewer) : null;
 @endphp
 
 @if ($show)
-    @if ($relation === 'mutual')
+    @if ($missing !== null && $missing['href'] !== null)
+        <a href="{{ $missing['href'] }}" {{ $attributes }} data-test="after-game-link" data-state="missing">{{ $missing['text'] }}</a>
+    @elseif ($missing !== null)
+        <span class="{{ $textClass }}" data-test="after-game-link" data-state="missing">{{ $missing['text'] }}</span>
+    @elseif ($relation === 'mutual')
         <span class="{{ $textClass }}" data-test="after-game-link" data-state="mutual">{{ __('Mutual opponents, rated next time') }}</span>
     @elseif ($relation === 'listed')
         <span class="{{ $textClass }}" data-test="after-game-link" data-state="listed">{{ __('Rated next time once :name adds you back', ['name' => $name]) }}</span>

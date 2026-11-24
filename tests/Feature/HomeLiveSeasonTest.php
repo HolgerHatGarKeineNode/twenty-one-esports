@@ -26,9 +26,10 @@ test('the Season page names the live season in its rules by its number, the Pre-
     openSeason(['slug' => $slug]);
 
     $this->get(route('mining'))->assertOk()
-        // Live, how it works is a part of the closed reference at the end (plan "mining-page-clarity" P5): an h3 in it.
+        // Live, how it works is a part of the closed reference at the end (plan "mining-page-clarity" P5): an h3 in it, named
+        // for the blocks, as "How to play Season 1" stands right above it (design-lead review, finding 8).
         ->assertSee('data-test="how-season">'.e($heading).'</h3>', false);
 })->with([
-    'a later season' => ['season-2', 'How Season 3 works'],
-    'the first season' => ['pre-season', 'How Season 1 works'],
+    'a later season' => ['season-2', 'Blocks in Season 3'],
+    'the first season' => ['pre-season', 'Blocks in Season 1'],
 ]);

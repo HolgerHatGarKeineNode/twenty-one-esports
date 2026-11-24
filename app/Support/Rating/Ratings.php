@@ -12,6 +12,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessModes;
+use App\Support\GameNames;
 use App\Support\Series\Ladders;
 
 /**
@@ -182,13 +183,15 @@ final class Ratings
 
     /**
      * The rating chips of a player (PlayerHeader.dc.html, the player card):
-     * chess in the default mode (rapid) always and every other chess mode the
-     * player has a result in (plan "Schach Rapid und Clan", P3: one chip per
-     * rated chess mode, from the registry), plus each Rocket League lineup
-     * the player has a seat in, every one from its headline ladder (the
-     * Season once it has a result, else casual; the chip labels its pool).
+     * every chess mode the player has a result in (plan "Schach Rapid und
+     * Clan", P3: one chip per rated chess mode, from the registry), the board
+     * game mode they played most (design-lead review, finding 7: no forced
+     * "Chess rapid 1,000 · provisional" chip for a player without a chess
+     * result), plus each Rocket League lineup the player has a seat in, every
+     * one from its headline ladder (the Season once it has a result, else
+     * casual; the chip labels its pool).
      *
-     * @return list<array{label: string, rating: array<string, mixed>, mode?: string}>
+     * @return list<array{label: string, rating: array<string, mixed>, mode?: string, game?: string}>
      */
     public static function chipsFor(User $user): array
     {
@@ -209,9 +212,23 @@ final class Ratings
                 ? self::summary($rated, Rating::RATED)
                 : self::summary($rows->first(fn (Rating $rating): bool => $rating->mode === $mode && $rating->pool === Rating::CASUAL && $rating->season === ''), Rating::CASUAL);
 
-            if ($mode === ChessModes::DEFAULT || $rating['results'] > 0) {
+            if ($rating['results'] > 0) {
                 $chips[] = ['label' => BadgeCopy::ladder('chess', $mode), 'rating' => $rating, 'mode' => $mode];
             }
+        }
+
+        // The board game mode with the most results (both pools, the live Season's rated row and the casual one).
+        $boards = array_diff_key(app(GameRegistry::class)->boards(), ['chess' => true]);
+        $played = $boards === [] ? null : Rating::query()->where('subject', 'user:'.$user->id)->whereIn('game', array_keys($boards))->where('results', '>', 0)
+            ->get(['game', 'mode', 'pool', 'season', 'results'])
+            ->filter(fn (Rating $row): bool => $row->pool === Rating::CASUAL ? $row->season === '' : $row->season === self::season(Rating::RATED, $row->game, $row->mode))
+            ->groupBy(fn (Rating $row): string => $row->game.'/'.$row->mode)
+            ->map(fn ($rows): int => (int) $rows->sum('results'))
+            ->sortDesc()->keys()->first();
+
+        if ($played !== null) {
+            [$game, $mode] = explode('/', (string) $played, 2);
+            $chips[] = ['label' => (string) preg_replace('/\s+\d+\+\d+$/', '', GameNames::full($game, $mode)), 'rating' => self::headline($user->id, $game, $mode), 'game' => $game];
         }
 
         $seats = LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')

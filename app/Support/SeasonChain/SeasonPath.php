@@ -6,6 +6,7 @@ use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Board\RatedBoard;
@@ -18,6 +19,8 @@ use App\Support\Hyper\HyperMining;
 use App\Support\LeagueTime;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * "Your path to Season 1" (plan "Season vs. Casual", P4): the gate of rated
@@ -81,12 +84,13 @@ final class SeasonPath
                 : $this->step('profile', true, __('Name and profile picture set'));
         }
 
-        // The trust rank the gate reads (the raw fact: a barred player is left out of a pin and would read 0).
-        $rank = (int) ($this->facts->at([$user->pubkey], [$user->pubkey, $user->pubkey])['trust'][$user->pubkey] ?? 0);
+        // The trust rank the gate reads. It comes only from anchors, opponent lists and confirmed reports (TrustJob):
+        // games played are no input, so the step never says they raise it (design-lead review, finding 1).
+        $rank = $this->trustRank($user);
         $minimum = RatedTrustGate::minimum();
         $steps[] = $rank >= $minimum
             ? $this->step('trust', true, __('Trust rank :rank, needs :minimum', ['rank' => $rank, 'minimum' => $minimum]))
-            : $this->step('trust', false, __('Trust rank :rank, needs :minimum. Casual games with members, and players who add you back, raise it.', ['rank' => $rank, 'minimum' => $minimum]), route('settings.opponents'), __('How it rises'), __('Trust rank :rank, needs :minimum', ['rank' => $rank, 'minimum' => $minimum]));
+            : $this->step('trust', false, __('Trust rank :rank, needs :minimum. It rises when members or Trusted players list you as an opponent.', ['rank' => $rank, 'minimum' => $minimum]), route('settings.opponents').'#trust', __('How it rises'), __('Trust rank :rank, needs :minimum', ['rank' => $rank, 'minimum' => $minimum]));
 
         $mutual = $this->opponents->mutual($user);
 
@@ -105,6 +109,74 @@ final class SeasonPath
         $eligible = collect($steps)->every(fn (array $step): bool => $step['done']);
 
         return [...$path, 'state' => $eligible ? 'eligible' : 'steps', 'steps' => $steps, 'mutual' => $names, 'rank' => $rank, 'minimum' => $minimum];
+    }
+
+    /**
+     * The trust rank the gate reads for this player (the raw fact: a barred
+     * player is left out of a pin and would read 0 there); 0 before a run.
+     */
+    public function trustRank(User $user): int
+    {
+        return (int) ($this->facts->at([$user->pubkey], [$user->pubkey, $user->pubkey])['trust'][$user->pubkey] ?? 0);
+    }
+
+    /**
+     * What keeps this player from rated play other than a mutual opponent
+     * (design-lead review, finding 2: the end of a game promised "rated next
+     * time" to a player below the trust minimum). The first open profile or
+     * trust step as "You still need: …" with its fix (the trust step leads to
+     * the opponents page's #trust), or the blocker's message without a link;
+     * null when a mutual opponent is all that is missing, or nothing is.
+     *
+     * @return array{key: string, text: string, href: string|null}|null
+     */
+    public function missing(User $user): ?array
+    {
+        $path = $this->for($user);
+
+        if ($path['state'] === 'blocked') {
+            return ['key' => (string) $path['kind'], 'text' => (string) $path['message'], 'href' => null];
+        }
+
+        foreach ($path['steps'] as $step) {
+            if (! $step['done'] && ! in_array($step['key'], ['opponents', 'opponent'], true)) {
+                $what = $step['key'] === 'trust' ? __('Trust rank :rank/:minimum', ['rank' => $path['rank'], 'minimum' => $path['minimum']]) : $step['short'];
+
+                return ['key' => $step['key'], 'text' => __('You still need: :what', ['what' => $what]), 'href' => $step['href']];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The members this player has played (any game: chess, a board game,
+     * Proof of Pong, a Hyperbitcoinization match, a team match), by name:
+     * the people who can raise their trust rank by listing them as an
+     * opponent (the opponents page's #trust section, design-lead review,
+     * finding 1). At most `$limit`; the last 200 games per table are read.
+     *
+     * @return Collection<int, User>
+     */
+    public function playedMembers(User $user, int $limit = 12): Collection
+    {
+        $ids = collect();
+
+        foreach ([[(new ChessGame)->getTable(), 'white_id', 'black_id'], [(new BoardGame)->getTable(), 'white_id', 'black_id'], [(new PongMatch)->getTable(), 'left_id', 'right_id']] as [$table, $a, $b]) {
+            $rows = DB::table($table)->where(fn ($query) => $query->where($a, $user->id)->orWhere($b, $user->id))->latest('id')->limit(200)->get([$a, $b]);
+            $ids = $ids->merge($rows->pluck($a))->merge($rows->pluck($b));
+        }
+
+        $ids = $ids->merge(DB::table('hyper_seats')->whereIn('hyper_match_id', DB::table('hyper_seats')->where('user_id', $user->id)->select('hyper_match_id'))->pluck('user_id'));
+        $ids = $ids->merge(DB::table('series_match_players')->whereIn('series_match_id', DB::table('series_match_players')->where('user_id', $user->id)->select('series_match_id'))->pluck('user_id'));
+        $ids = $ids->filter(fn ($id): bool => $id !== null && (int) $id !== $user->id)->map(fn ($id): int => (int) $id)->unique()->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()->whereIn('id', $ids->all())->where('is_member', true)->whereNotNull('pubkey')
+            ->orderBy('name')->orderBy('id')->limit($limit)->get();
     }
 
     /**

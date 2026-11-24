@@ -107,8 +107,8 @@ test('below the trust minimum the trust step names the rank against the minimum 
     $path = app(SeasonPath::class)->for($anna[0]);
 
     expect($path['state'])->toBe('steps')
-        ->and(pathSteps($path)['trust'])->toBe([false, route('settings.opponents')])
-        ->and($path['steps'][3]['text'])->toStartWith('Trust rank 12, needs 50.');
+        ->and(pathSteps($path)['trust'])->toBe([false, route('settings.opponents').'#trust'])
+        ->and($path['steps'][3]['text'])->toBe('Trust rank 12, needs 50. It rises when members or Trusted players list you as an opponent.');
 });
 
 test('without a mutual opponent the opponents step is open; with a player in context it is that player\'s add button', function () {
@@ -185,7 +185,7 @@ test('the component lists the open steps with one button each, the done ones wit
             'known' => ['true', null],
             'nip05' => ['false', route('settings.nip05')],
             'profile' => ['true', null],
-            'trust' => ['false', route('settings.opponents')],
+            'trust' => ['false', e(route('settings.opponents').'#trust')],
             'opponents' => ['false', route('settings.opponents')],
         ]);
 });

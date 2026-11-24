@@ -102,6 +102,8 @@ function opponentsReachFinishedChess(User $white, User $black): ChessGame
 /* ---------- P5: after a finished game ------------------------------------------------------------------ */
 
 test('the chess end screen shows each player the other with add, accept or mutual, and nothing to a spectator or a guest', function () {
+    // A live season: "rated next time" is said only to a player who could play rated (design-lead review, finding 2).
+    openSeason();
     $game = opponentsReachFinishedChess($this->anna, $this->bert);
     $page = fn (?User $viewer): string => (string) ($viewer ? $this->actingAs($viewer) : $this)->get(route('games.show', $game))->assertOk()->getContent();
 
@@ -252,10 +254,16 @@ test('the lobbies\' rated line and the correspondence form\'s "not mutual" line 
     expect((string) $this->actingAs($this->anna)->get(route('chess.lobby'))->getContent())->toContain('data-test="kind-why-opponents"')
         ->and((string) $this->actingAs($this->anna)->get(route('board.lobby', Blockli::SLUG))->getContent())->toContain('data-test="kind-why-opponents"');
 
-    opponentsReachRanks(80, connected: false);
-    $form = (string) $this->actingAs($this->anna)->get(route('board.correspondence', ['checkers', 'to' => $carl->npub]))->assertOk()->getContent();
+    // Without an opponent picked the form's line leads to the opponents page; with Carl picked, who is no mutual opponent, the
+    // path card under the send button holds Carl's add button instead of a second line (design-lead review, finding 3).
+    $form = (string) $this->actingAs($this->anna)->get(route('board.correspondence', 'checkers'))->assertOk()->getContent();
     expect(str($form)->after('data-test="rated-why"')->before('</span>')->toString())->toContain('data-test="rated-why-opponents"')
         ->and($form)->toContain($link);
+
+    opponentsReachRanks(80, connected: false);
+    $form = (string) $this->actingAs($this->anna)->get(route('board.correspondence', ['checkers', 'to' => $carl->npub]))->assertOk()->getContent();
+    expect($form)->not->toContain('data-test="rated-why"')
+        ->and(str($form)->after('data-key="opponent" data-done="false"')->before('</li>')->toString())->toContain('data-test="opponent-add"');
 });
 
 test('the opponents page says Season 1 needs mutual listing and how many of the player\'s opponents list them back', function () {
@@ -266,7 +274,7 @@ test('the opponents page says Season 1 needs mutual listing and how many of the 
 
     $line = str((string) $this->actingAs($this->anna)->get(route('settings.opponents'))->assertOk()->getContent())->after('data-test="opponent-season-line"')->before('</p>')->toString();
 
-    expect($line)->toContain(__(':season rated needs you both to list each other.', ['season' => 'Season 1']))
+    expect($line)->toContain(__('For :season, you list each other as opponents.', ['season' => 'Season 1']))
         ->and($line)->toContain(trans_choice(':mutual of your :count opponent lists you back.|:mutual of your :count opponents list you back.', 2, ['mutual' => 1, 'count' => 2]));
 });
 

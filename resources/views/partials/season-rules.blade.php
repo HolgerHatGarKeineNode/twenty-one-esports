@@ -25,8 +25,9 @@
 @endphp
 
 @if ($bare ?? false)
+{{-- Bare, it follows "How to play Season 1" (x-season.how) in the reference: its own heading names the blocks, not "How Season 1 works" a second time (design-lead review, finding 8). --}}
 <div class="flex flex-col gap-3" data-test="season-rules">
-    <h3 id="how-h" class="m-0 text-[15px] font-bold" data-test="how-season">{{ $heading }}</h3>
+    <h3 id="how-h" class="m-0 text-[15px] font-bold" data-test="how-season">{{ $liveSeason !== null ? __('Blocks in :season', ['season' => BadgeCopy::season($liveSeason->slug)]) : $heading }}</h3>
     <div class="flex flex-col gap-3">
 @else
 <details class="group rounded-lg bg-card" data-test="season-rules">

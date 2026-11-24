@@ -82,7 +82,7 @@ final class RatedBoard
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {
-            return ['kind' => 'trust', 'message' => __('Rated :game needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.', ['game' => GameNames::game($game), 'minimum' => RatedTrustGate::minimum()])];
+            return ['kind' => 'trust', 'message' => __('Rated :game needs a Trusted account (trust rank :minimum or more). It rises when members or Trusted players list you as an opponent.', ['game' => GameNames::game($game), 'minimum' => RatedTrustGate::minimum()])];
         }
 
         return null;

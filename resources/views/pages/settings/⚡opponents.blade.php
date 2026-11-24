@@ -9,6 +9,8 @@ use App\Support\SeasonChain\OpponentListRefused;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\OpponentRequests;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\SeasonChain\SeasonPath;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
@@ -140,6 +142,13 @@ new #[Title('Opponents')] class extends Component {
     $standardSteps = ProfileStandard::stepsFor($user);
     // An impersonation hold (P2): the player reads only that the account is being checked, never why; it outranks the steps.
     $held = Impersonation::held([$user->pubkey]) !== [];
+    // How the trust rank rises (design-lead review, finding 1): the rank against the minimum, and the members this player
+    // has played, each with the add button: a member who lists them is what raises it (TrustJob reads no games).
+    $trustComputed = $open && app(RatedTrustGate::class)->isAvailable();
+    $seasonPath = app(SeasonPath::class);
+    $trustRank = $trustComputed ? $seasonPath->trustRank($user) : 0;
+    $trustMinimum = RatedTrustGate::minimum();
+    $playedMembers = $open ? $seasonPath->playedMembers($user) : collect();
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="opponent-settings"
@@ -149,7 +158,7 @@ new #[Title('Opponents')] class extends Component {
     {{-- Plan "Season vs. Casual", P5: the rule in one line, and how far the player's own list carries it. --}}
     @if ($open)
         <p class="m-0 flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px] leading-normal" data-test="opponent-season-line">
-            <b>{{ __(':season rated needs you both to list each other.', ['season' => \App\Support\Badges\BadgeCopy::season(\App\Support\Series\Ladders::season() ?? 'pre-season')]) }}</b>
+            <b>{{ __('For :season, you list each other as opponents.', ['season' => \App\Support\Badges\BadgeCopy::season(\App\Support\Series\Ladders::season() ?? 'pre-season')]) }}</b>
             @if ($entries !== [])<span class="text-ink-2" data-test="opponent-season-count">{{ trans_choice(':mutual of your :count opponent lists you back.|:mutual of your :count opponents list you back.', count($entries), ['mutual' => count($mutual), 'count' => count($entries)]) }}</span>@endif
         </p>
     @endif
@@ -188,6 +197,36 @@ new #[Title('Opponents')] class extends Component {
                 </ol>
             @endif
             <p class="m-0 max-w-[68ch] text-ink-3">{{ __('Casual play stays open.') }}</p>
+        </section>
+    @endif
+
+    @if ($open)
+        <section id="trust" aria-labelledby="ot-h" class="flex scroll-mt-20 flex-col gap-3 rounded-lg bg-card px-4 py-5 text-[13px] leading-normal lg:px-6" data-test="trust-section">
+            <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 id="ot-h" class="m-0 text-[15px] font-bold">{{ __('Your trust rank') }}</h2>
+                @if ($trustComputed)
+                    <b @class(['tabular-nums', 'text-win' => $trustRank >= $trustMinimum]) data-test="trust-rank">{{ __('Trust rank :rank of :minimum', ['rank' => $trustRank, 'minimum' => $trustMinimum]) }}</b>
+                @endif
+            </span>
+            @unless ($trustComputed)
+                <p class="m-0 max-w-[68ch] text-ink-2" data-test="trust-not-computed">{{ RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED) }}</p>
+            @endunless
+            <p class="m-0 max-w-[68ch] text-ink-2">{{ __('A member who knows you adds you as an opponent.') }}</p>
+            @if ($playedMembers->isEmpty())
+                <p class="m-0 max-w-[68ch] text-ink-3" data-test="trust-members-empty">{{ __('No member among the players you have played yet.') }}</p>
+            @else
+                <h3 class="m-0 text-[13px] font-bold">{{ __('Members you have played') }}</h3>
+                <ul class="m-0 grid list-none grid-cols-1 gap-x-6 p-0 lg:grid-cols-2" data-test="trust-members">
+                    @foreach ($playedMembers as $member)
+                        <li wire:key="trust-{{ $member->id }}" class="flex min-w-0 flex-col gap-1 border-t border-hairline py-2" data-test="trust-member" data-id="{{ $member->id }}">
+                            <x-player-link :user="$member" class="flex min-h-11 min-w-0 items-center gap-3 self-start text-ink hover:text-ink">
+                                <x-avatar :user="$member" :size="24" class="shrink-0 rounded-sm" /><b class="min-w-0 truncate">{{ $member->displayName() }}</b><x-member-badge />
+                            </x-player-link>
+                            <livewire:opponent-button :player="$member" :inline="true" :note="false" :key="'trust-'.$member->id" />
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
         </section>
     @endif
 

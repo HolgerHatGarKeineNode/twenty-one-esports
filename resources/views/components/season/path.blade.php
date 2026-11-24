@@ -1,4 +1,4 @@
-@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false, 'names' => true])
+@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false, 'names' => true, 'path' => null])
 
 {{--
     "Your path to Season 1" (plan "Season vs. Casual", P4): what stands between the signed-in player and rated play,
@@ -11,11 +11,12 @@
     `compact` the steps as one row of chips beside the heading (a done step green, an open one red with its fix as
     the link; on a phone the heading is for screen readers only), for a page with a height budget (/mining's hero,
     where these chips stood before). `names` false: the eligible line leaves the mutual opponents to
-    x-opponents.mutual right under it (plan P5: the lobbies and /me).
+    x-opponents.mutual right under it (plan P5: the lobbies and /me). `path`: SeasonPath::for() already read by the
+    page (a lobby that drops its own reason line while the steps show), instead of reading it again.
 --}}
 @php
     $viewer = $user ?? auth()->user();
-    $path = $viewer instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($viewer, $game, $mode, $opponent) : null;
+    $path ??= $viewer instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($viewer, $game, $mode, $opponent) : null;
 @endphp
 
 @if ($path !== null)

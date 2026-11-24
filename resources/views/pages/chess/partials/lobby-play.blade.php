@@ -45,6 +45,10 @@
     $allRefused = ! in_array(null, $ratedRefusals, true);
     $reasons = $this->ratedReasons;
     $defaultReason = $reasons[ChessModes::DEFAULT] ?? null;
+    // "Your path to Season 1" under the panels (plan P4), read once: while it lists the steps, the reason line under the
+    // choice would say the same again (design-lead review, finding 3); the badge on the rated option stays.
+    $seasonPath = $user instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($user, 'chess', ChessModes::DEFAULT) : null;
+    $pathShowsSteps = ($seasonPath['state'] ?? null) === 'steps';
     // One chip under the choice, only while a season runs: what a rated win mines now per mode, or that casual mines nothing.
     $seasonLive = Seasons::live() !== null;
     $chips = [];
@@ -87,7 +91,7 @@
                                 <span class="rv-live h-5 font-normal"><i></i><b data-test="play-{{ $liveMode }}-searching">{{ $byMode[$liveMode] ?? 0 }}</b> {{ __('searching') }}</span>
                             @endif
                             {{-- Whether this mode plays Season 1 at all (plan P3; Casual always): the choice itself is under the list. --}}
-                            <span @class(['rv-tag ms-1 whitespace-nowrap', 'is-btc' => $seasonModes[$liveMode]]) data-test="play-{{ $liveMode }}-kinds">{{ $seasonModes[$liveMode] ? $seasonName : __('Casual only') }}</span>
+                            <span @class(['rv-tag ms-1 whitespace-nowrap', 'is-btc' => $seasonModes[$liveMode] && ($reasons[$liveMode] ?? null) === null]) data-test="play-{{ $liveMode }}-kinds">{{ $seasonModes[$liveMode] ? $seasonName : __('Casual only') }}</span>
                         </x-slot:meta>
                         <x-slot:detail>{{ $loop->first ? __('Our default: more time to think') : __('as in the casual cups') }}</x-slot:detail>
                     </x-chess.lobby-tile>
@@ -124,7 +128,7 @@
                         @elseif ($this->dailyGames->isNotEmpty())
                             {{ trans_choice(':count game running|:count games running', $this->dailyGames->count()) }}
                         @else
-                            {{ __('casual') }}
+                            {{ __('Casual') }}
                         @endif
                     </x-slot:meta>
                 </x-chess.lobby-tile>
@@ -170,7 +174,7 @@
                     <span class="rv-tag" x-show="! rated" @if ($defaultRefusal === null) x-cloak @endif>{{ __('Casual mines no block') }}</span>
                 </span>
             @endif
-            @if ($anyRefused)
+            @if ($anyRefused && ! $pathShowsSteps)
                 <p id="kind-reason" class="m-0 flex max-w-[68ch] flex-wrap items-center gap-x-2 text-[13px] leading-normal text-ink-2" data-test="kind-reason"
                    x-show="reasons[liveMode] !== null" @if ($defaultReason === null) x-cloak @endif x-bind:data-kind="reasons[liveMode]?.kind" data-kind="{{ $defaultReason['kind'] ?? '' }}">
                     <span x-text="reasons[liveMode]?.line">{{ $defaultReason['line'] ?? '' }}</span>
@@ -313,7 +317,7 @@
 
     {{-- "Your path to Season 1" (plan P4): the steps still missing, each with its fix; one line once rated is open; under the invite module, which opens in place above it. --}}
     @auth
-        <x-season.path game="chess" :mode="ChessModes::DEFAULT" :names="false" />
+        <x-season.path game="chess" :mode="ChessModes::DEFAULT" :names="false" :path="$seasonPath" />
         {{-- Plan P5: who the player lists each other with, who is online and who can play Season 1 now. --}}
         <x-opponents.mutual game="chess" />
     @endauth
