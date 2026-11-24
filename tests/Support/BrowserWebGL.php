@@ -18,7 +18,7 @@ use function Amp\Websocket\Client\connect;
  * Pest's Playwright server launches one browser per connection, with the launch options of the connection's URL,
  * refuses to launch another on it and drops launch `args`; a `channel` it passes on. So on() closes Pest's connection
  * (and its browser) and opens a new one asking for CHANNEL, which scripts/link-host-chromium.sh points at the host's
- * Chromium with SwiftShader's switches. The next visit() initialises Playwright on the new connection. off() swaps
+ * Chromium with SwiftShader's switches (Playwright 1.65 dropped the old chromium-tip-of-tree channel). The next visit() initialises Playwright on the new connection. off() swaps
  * back to a plain connection, so a file that runs later in the same process gets the browser it always had. The file using it also runs in pest
  * processes of its own in scripts/test-browser.sh (split entries after two shards that end early), so the normal run never shares a process with it.
  *
@@ -26,8 +26,11 @@ use function Amp\Websocket\Client\connect;
  */
 final class BrowserWebGL
 {
-    /** Playwright's channel that scripts/link-host-chromium.sh registers as the host Chromium with software WebGL. */
-    public const CHANNEL = 'chromium-tip-of-tree';
+    /**
+     * Playwright's alias for its full "chromium" executable. scripts/link-host-chromium.sh shims that one with
+     * SwiftShader's switches (the headless shell, which a connection without a channel gets, keeps the GPU-off ones).
+     */
+    public const CHANNEL = 'chrome-for-testing';
 
     private static bool $on = false;
 
