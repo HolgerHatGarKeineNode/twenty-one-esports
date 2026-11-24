@@ -107,9 +107,6 @@ const NAV_PAGES = [
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.checks' => ['roles' => ['admin'], 'max' => 2],
-    // An account's check page and a held name's check page: below the checks overview (plan "Admin checks").
-    'admin.checks.player' => ['roles' => ['admin'], 'max' => 3],
-    'admin.checks.hold' => ['roles' => ['admin'], 'max' => 3],
     'admin.nip05' => ['roles' => ['admin'], 'max' => 2],
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],
     'admin.organizers' => ['roles' => ['admin'], 'max' => 2],
@@ -152,6 +149,8 @@ const NAV_NOT_PAGES = [
     'stream.status' => 'JSON: the live stream status the pages poll',
     'stream.cover' => 'image: the live stream cover the 30311 event points at',
     'stream.pride-image' => 'image: a pride note slide the league\'s Nostr note points at',
+    'admin.checks.player' => 'detail: the check page of an account, linked from the checks overview only once an account is flagged; the route sweep opens it with a real account',
+    'admin.checks.hold' => 'detail: the check page of a held name, linked from the checks overview only while a hold exists; the route sweep opens it with a real hold',
     'admin.disputes.evidence' => 'file: a dispute screenshot, linked from the dispute page',
     'nostr.nip05' => 'JSON for Nostr clients',
     'lnurl.pay' => 'JSON for Lightning wallets: the pool address (LUD-06/16)',
