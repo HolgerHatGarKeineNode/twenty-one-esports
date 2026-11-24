@@ -107,6 +107,9 @@ const NAV_PAGES = [
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.checks' => ['roles' => ['admin'], 'max' => 2],
+    // An account's check page and a held name's check page: below the checks overview (plan "Admin checks").
+    'admin.checks.player' => ['roles' => ['admin'], 'max' => 3],
+    'admin.checks.hold' => ['roles' => ['admin'], 'max' => 3],
     'admin.nip05' => ['roles' => ['admin'], 'max' => 2],
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],
     'admin.organizers' => ['roles' => ['admin'], 'max' => 2],
