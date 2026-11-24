@@ -2,7 +2,6 @@
 
 namespace Tests\Support;
 
-use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Message;
 use Ratchet\RFC6455\Handshake\RequestVerifier;
 use Ratchet\RFC6455\Handshake\ServerNegotiator;
@@ -88,7 +87,7 @@ final class MiniRelay
 
     public function run(int $port): void
     {
-        $negotiator = new ServerNegotiator(new RequestVerifier, new HttpFactory);
+        $negotiator = new ServerNegotiator(new RequestVerifier, new StringHeaderResponseFactory);
         $server = new SocketServer('127.0.0.1:'.$port);
 
         $server->on('connection', function (ConnectionInterface $connection) use ($negotiator): void {
