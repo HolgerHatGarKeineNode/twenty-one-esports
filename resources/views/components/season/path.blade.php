@@ -1,4 +1,4 @@
-@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false, 'names' => true, 'path' => null])
+@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false, 'names' => true, 'path' => null, 'except' => null])
 
 {{--
     "Your path to Season 1" (plan "Season vs. Casual", P4): what stands between the signed-in player and rated play,
@@ -42,7 +42,8 @@
                 </p>
             @elseif ($compact)
                 <ol class="contents" data-test="season-path-steps">
-                    @foreach ($path['steps'] as $step)
+                    {{-- `except`: the step the page already offers as its primary button (/mining), not repeated as a chip. --}}
+                    @foreach (array_filter($path['steps'], fn (array $step): bool => $step['key'] !== $except) as $step)
                         <li class="flex min-w-0" data-test="season-path-step" data-key="{{ $step['key'] }}" data-done="{{ $step['done'] ? 'true' : 'false' }}">
                             @if ($step['player'] !== null)
                                 <livewire:opponent-button :player="$step['player']" :inline="true" :key="'season-path-'.$step['player']->id" />

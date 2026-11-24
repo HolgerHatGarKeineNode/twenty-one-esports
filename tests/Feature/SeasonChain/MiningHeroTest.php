@@ -130,8 +130,9 @@ test('a player below the trust minimum sees a red trust step that links to the o
     $hero = heroOf($anna[0]);
 
     // The first open step is the primary action (design-lead review, finding 4).
-    expect($hero['primary'])->toBe(['step', 'Raise your trust rank'])
-        ->and($hero['path']['trust'])->toBe(['bad', 'Trust rank 12, needs 50 How it rises', route('settings.opponents').'#trust'])
+    // The trust step is that button, with the rank; the chips do not repeat it.
+    expect($hero['primary'])->toBe(['step', 'Raise your trust rank · 12/50'])
+        ->and($hero['path'])->not->toHaveKey('trust')
         ->and($hero['path']['opponents'][0])->toBe('ok');
 });
 
@@ -142,8 +143,10 @@ test('a player without a mutual opponent sees a red opponents step that links to
 
     $hero = heroOf($anna);
 
+    // The open opponents step is the primary button; the chips keep the done trust step only.
     expect($hero['path']['trust'][0])->toBe('ok')
-        ->and($hero['path']['opponents'])->toBe(['bad', 'No mutual opponent Your opponents', route('settings.opponents')]);
+        ->and($hero['primary'])->toBe(['step', 'Your opponents'])
+        ->and($hero['path'])->not->toHaveKey('opponents');
 });
 
 test('a one-sided list is no mutual opponent: the step counts only players who list each other', function () {
@@ -155,8 +158,8 @@ test('a one-sided list is no mutual opponent: the step counts only players who l
     $opponents = app(Opponents::class);
     $opponents->add($anna[0], $bert[0], $anna[1]->signTemplates($opponents->prepareAdd($anna[0], $bert[0])));
 
-    expect(heroOf($anna[0])['path']['opponents'])->toBe(['bad', 'No mutual opponent Your opponents', route('settings.opponents')])
-        ->and(heroOf($bert[0])['path']['opponents'][1])->toBe('No mutual opponent Your opponents');
+    expect(heroOf($anna[0])['primary'])->toBe(['step', 'Your opponents'])
+        ->and(heroOf($bert[0])['primary'])->toBe(['step', 'Your opponents']);
 });
 
 test('before trust ranks are computed the path waits with the gate\'s message instead of naming a rank', function () {

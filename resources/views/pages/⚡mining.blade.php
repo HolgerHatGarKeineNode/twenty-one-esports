@@ -310,7 +310,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         {{-- The live hero (canvas SeasonLive, plan "mining-page-clarity" P2, rules R3, R14, R15): what to do to mine, the one
              primary action, the way to how it works, and the viewer's own standing (NEU (Scope), approved 2026-11-20). --}}
         <section aria-labelledby="mine-h" class="sn-hero" data-test="mining-hero">
-            <div class="flex min-w-0 flex-col gap-3 lg:gap-4">
+            <div class="flex min-w-0 flex-col gap-2 lg:gap-4">
                 <h2 id="mine-h" class="m-0 max-w-[26ch] font-display text-[22px] leading-[1.15] font-bold lg:text-[36px]">{{ __('Win a rated game, mine the next block') }}</h2>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                     @if ($viewer instanceof User)
@@ -323,7 +323,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                             $firstStep = $minePath['state'] === 'steps' ? collect($minePath['steps'])->first(fn (array $step): bool => ! $step['done'] && $step['href'] !== null) : null;
                         @endphp
                         @if ($toMine !== null && $firstStep !== null)
-                            <a href="{{ $firstStep['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="step" data-step="{{ $firstStep['key'] }}">{{ $firstStep['key'] === 'trust' ? __('Raise your trust rank') : $firstStep['cta'] }}</a>
+                            <a href="{{ $firstStep['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="step" data-step="{{ $firstStep['key'] }}">{{ $firstStep['key'] === 'trust' ? __('Raise your trust rank').' · '.$minePath['rank'].'/'.$minePath['minimum'] : $firstStep['cta'] }}</a>
                             <a href="{{ $toMine['href'] }}" class="rv-b2 h-[52px] px-6" data-test="mining-secondary" data-game="{{ $toMine['slug'] }}">{{ __('Play :game casual', ['game' => $toMine['name']]) }}</a>
                         @elseif ($toMine !== null)
                             <a href="{{ $toMine['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated" data-game="{{ $toMine['slug'] }}">{{ $toMine['rated'] ? __('Play rated :game', ['game' => $toMine['name']]) : __('Play :game casual', ['game' => $toMine['name']]) }}</a>
@@ -337,7 +337,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                        x-data x-on:click="const d = document.getElementById('season-reference'); (d?.tagName === 'DETAILS' ? d : d?.querySelector('details'))?.setAttribute('open', '')">{{ __('How mining works') }}</a>
                 </div>
                 @if ($viewer instanceof User)
-                    <x-season.path compact :path="$minePath ?? null" />
+                    <x-season.path compact :path="$minePath ?? null" :except="$firstStep['key'] ?? null" />
                 @endif
                 @if ($standing !== null)
                     <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('Your standing for rated play') }}" data-test="mining-standing">

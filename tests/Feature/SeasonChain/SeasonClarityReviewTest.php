@@ -137,7 +137,7 @@ test('on /mining a player who cannot play rated yet gets the first open step as 
     preg_match('/<a href="([^"]+)" class="rv-b h-\[52px\] px-6" data-test="mining-primary" data-variant="([a-z]+)"[^>]*>([^<]+)</', $html, $primary);
 
     // Mutation: `$firstStep = null` in the /mining hero (the game rated as primary for everyone) turns this red.
-    expect(array_slice($primary, 1))->toBe([route('settings.opponents').'#trust', 'step', 'Raise your trust rank'])
+    expect(array_slice($primary, 1))->toBe([route('settings.opponents').'#trust', 'step', 'Raise your trust rank · 12/50'])
         ->and($html)->toMatch('/data-test="mining-secondary" data-game="[a-z-]+">Play [^<]+ casual</');
 });
 

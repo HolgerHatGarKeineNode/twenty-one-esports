@@ -138,6 +138,7 @@ const MINING_LIVE_READ = <<<'JS'
         open: [...root.querySelectorAll('details[open]')].map(name),
         empty: root.querySelectorAll('[data-test=chain-empty]').length,
         chips: root.querySelectorAll('[data-test=mining-standing] li').length,
+        primaryStep: root.querySelector('[data-test=mining-primary]')?.dataset.step ?? null,
         steps: [...root.querySelectorAll('[data-test=season-path-step][data-done=false]')].map((li) => li.dataset.key + (li.querySelector('[data-test=season-path-fix]') ? '+button' : '')),
         anchors: [...root.querySelectorAll('[id^=block-]')].map((el) => el.id),
         cubes,
@@ -222,7 +223,9 @@ test('the live season on the production share set reads within its limits: the p
         ->and($read['state'])->toBe('live')
         ->and($read['empty'])->toBe($blocks === 0 ? 1 : 0)
         ->and($read['chips'])->toBe($viewer === 'player' ? 1 : 0)
-        ->and($read['steps'])->toBe($viewer === 'player' ? ['trust+button', 'opponents+button'] : [])
+        ->and($read['primaryStep'])->toBe($viewer === 'player' ? 'trust' : null)
+        // The trust step is the primary button (with the rank), so the chips show only the step after it.
+        ->and($read['steps'])->toBe($viewer === 'player' ? ['opponents+button'] : [])
         ->and($read['open'])->toBe([])
         ->and($read['primary'])->not->toBeNull()
         ->and($read['primary'][1])->toBeLessThanOrEqual($read['fold'], 'the primary button ends below the first screen')
