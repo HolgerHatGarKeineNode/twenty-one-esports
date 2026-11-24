@@ -33,7 +33,7 @@
     <span class="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <h2 id="season-how-h" @class(['m-0 font-bold', 'text-[15px]' => ! $compact, 'text-[13px]' => $compact])>{{ __('How to play :season', ['season' => $season]) }}</h2>
         @guest
-            <a href="{{ route('login') }}" class="rv-b2 is-sm shrink-0 whitespace-nowrap" data-test="season-how-login">{{ __('Log in') }}</a>
+            <a href="{{ route('login') }}" class="rv-b2 shrink-0 whitespace-nowrap" data-test="season-how-login">{{ __('Log in') }}</a>
         @endguest
     </span>
     @if (($path['state'] ?? null) === 'blocked')

@@ -441,6 +441,9 @@
     }
 
     .gp-stat > span {
+        /* A long label (a tournament's name) wraps here instead of squeezing the hero's data line beside it to a
+           107 px column at 1024 (Go 9x9, plan "Season vs. Casual", P7 walkthrough). */
+        max-width: 24ch;
         margin-top: 6px;
         color: var(--color-ink-2);
         font-size: 13px;
