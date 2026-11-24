@@ -8,9 +8,14 @@
  * cache; only a wrap that is no valid NIP-17 message for me stays null.
  * Run by tests/Feature/Tournaments/ChatUnwrapRetryTest.php; runnable alone
  * with `node --test`.
+ *
+ * The retry delays run on node:test's mock timers: the test fires them by
+ * `tick()`, never by sleeping. A wall-clock sleep against a schedule of 20 ms
+ * steps (a 120 ms wait for three of them) lost a retry in a loaded parallel
+ * run ("one attempt per retry: 3 !== 4").
  */
 import assert from 'node:assert/strict';
-import { afterEach, test } from 'node:test';
+import { afterEach, mock, test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import * as nip44 from 'nostr-tools/nip44';
 
@@ -42,9 +47,6 @@ const { cacheKey } = await import('../../resources/js/chatCache.js');
 const { wrapGroupMessage } = await import('../../resources/js/nostrChat.js');
 const { UNWRAP_RETRIES, roomChat } = await import('../../resources/js/roomChat.js');
 
-// Short retries for the test; the production delays are seconds.
-UNWRAP_RETRIES.splice(0, UNWRAP_RETRIES.length, 20, 20, 20);
-
 function keySigner(secret, { failDecrypts = 0 } = {}) {
     let failures = 0;
     const signer = {
@@ -71,11 +73,30 @@ function keySigner(secret, { failDecrypts = 0 } = {}) {
 const keys = { me: generateSecretKey(), opp: generateSecretKey() };
 const pk = { me: getPublicKey(keys.me), opp: getPublicKey(keys.opp) };
 const NOW = Math.floor(Date.now() / 1000);
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const made = [];
-afterEach(() => made.splice(0).forEach((comp) => comp.destroy()));
+afterEach(() => {
+    made.splice(0).forEach((comp) => comp.destroy());
+    mock.timers.reset();
+});
+
+/**
+ * Let every pending promise continuation run (unwrapping is promise-only work, no I/O). setImmediate is a real
+ * macrotask that mock.timers leaves alone: the microtask queue is empty again when it fires. `until` names the
+ * condition that must hold first, counted in turns, not milliseconds, so the machine's load changes nothing.
+ */
+async function settle(until = () => true) {
+    for (let turns = 0; turns < 1000 && !until(); turns++) await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Move the retry clock by `ms` and wait until the attempt it started has finished. */
+async function advance(ms, until) {
+    mock.timers.tick(ms);
+    await settle(until);
+}
 
 function room(signer) {
+    mock.timers.enable({ apis: ['setTimeout'] });
     store.clear();
     window.nostr = signer;
     const comp = roomChat({
@@ -115,7 +136,12 @@ test('a wrap the signer could not open is not cached and shows up once the signe
     assert.equal(localStorage.getItem(cacheKey('room', pk.me)), null, 'nothing is persisted for it either');
     assert.deepEqual(comp.rumors, []);
 
-    await wait(60);
+    // One tick short of the first delay: no second attempt yet.
+    await advance(UNWRAP_RETRIES[0] - 1);
+    assert.equal(signer.decryptCalls, 1, 'not tried again before its delay');
+    assert.deepEqual(comp.rumors, []);
+
+    await advance(1, () => comp.rumors.length > 0);
 
     assert.deepEqual(comp.rumors.map((r) => r.content), ['hello from the desk']);
     assert.ok(comp.cache[wrap.id], 'the opened message is cached');
@@ -128,7 +154,16 @@ test('a signer that keeps failing gives up after the retries, and the wrap is st
     const wrap = await wrapToMe('never opened here');
 
     await comp.receive(wrap);
-    await wait(120);
+
+    for (const [index, delay] of UNWRAP_RETRIES.entries()) {
+        const expected = index + 2;
+        await advance(delay, () => signer.decryptCalls >= expected);
+        assert.equal(signer.decryptCalls, expected, `retry ${index + 1} ran after its delay`);
+        assert.equal(Object.hasOwn(comp.cache, wrap.id), false, 'a failed unwrap is not cached as null');
+    }
+
+    // Out of retries: a long silence later there is no further attempt.
+    await advance(10 * Math.max(...UNWRAP_RETRIES));
 
     assert.equal(Object.hasOwn(comp.cache, wrap.id), false);
     assert.equal(signer.decryptCalls, 1 + UNWRAP_RETRIES.length, 'one attempt per retry: ' + signer.decryptCalls);
@@ -142,7 +177,7 @@ test('a wrap that is no message for me stays null in the cache and is not retrie
     const { wraps } = await wrapGroupMessage(keySigner(keys.opp), { sender: pk.opp, recipients: [pk.opp], content: 'to someone else', match: 53, now: NOW });
 
     await comp.receive(wraps[0]);
-    await wait(60);
+    await advance(10 * Math.max(...UNWRAP_RETRIES));
 
     assert.equal(comp.cache[wraps[0].id], null);
     assert.equal(signer.decryptCalls, 0);
@@ -156,7 +191,7 @@ test('destroy() cancels the retries', async () => {
 
     await comp.receive(wrap);
     comp.destroy();
-    await wait(80);
+    await advance(10 * Math.max(...UNWRAP_RETRIES));
 
     assert.equal(signer.decryptCalls, 1);
 });
