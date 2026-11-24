@@ -161,7 +161,7 @@ test('the launch leads for the configured hours after Block 0 and retires by its
         ->and(SeasonSlides::entries($state, $genesis + 12 * 3600 - 1)['lead'])->toBe(SeasonSlides::LAUNCH)
         ->and(SeasonSlides::entries($state, $genesis + 12 * 3600))->toMatchArray(['lead' => null, 'boost' => true])
         ->and(SeasonSlides::entries($state, $genesis + 12 * 3600)['games'])->not->toBe([])
-        ->and(seasonSvg(SeasonSlides::LAUNCH))->toContain('Pre-Season is live.', 'Pre-Season: every fair win is a block.', '2,100,000 sats to mine', 'The next block is up for grabs');
+        ->and(seasonSvg(SeasonSlides::LAUNCH))->toContain('Season 1 is live.', 'Pre-Season: every fair win is a block.', '2,100,000 sats to mine', 'The next block is up for grabs');
 });
 
 test('a game gets a slide only while it mines: switched off or without a weight it has none', function () {

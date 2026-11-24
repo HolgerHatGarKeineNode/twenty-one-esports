@@ -20,7 +20,8 @@
     $genesis = PreSeason::genesisMessage();
     $rules = ChainDraft::inForce();
     $daily = array_unique(array_values($rules->daily));
-    $heading = $laterSeason ? __('How :season works', ['season' => BadgeCopy::season($liveSeason->slug)]) : __('How the Pre-Season works');
+    // A live season goes by its name (BadgeCopy::season(), plan "Season vs. Casual", P2); "Pre-Season" is the time before Block 0 only.
+    $heading = $liveSeason !== null ? __('How :season works', ['season' => BadgeCopy::season($liveSeason->slug)]) : __('How the Pre-Season works');
 @endphp
 
 @if ($bare ?? false)
@@ -64,7 +65,7 @@
                 <li class="grid grid-cols-[16px_minmax(0,1fr)] gap-2 text-xs leading-[1.5] text-ink-2 lg:grid-cols-[20px_minmax(0,1fr)]"><span class="text-ink-3">{{ $number }}</span><span>{{ $rule }}</span></li>
             @endforeach
         </ul>
-        <p class="pl-note">{{ $laterSeason ? __('Draws mine nothing. Admins can tune these limits during the season; a change only counts for blocks after it.') : __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }}</p>
+        <p class="pl-note">{{ $laterSeason || $liveSeason !== null ? __('Draws mine nothing. Admins can tune these limits during the season; a change only counts for blocks after it.') : __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }}</p>
         <p class="pl-note">{{ __('Casual games run before and after Block 0: casual Elo only, no rank, no reward.') }}</p>
     </div>
 @if ($bare ?? false)

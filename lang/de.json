@@ -9691,5 +9691,10 @@
     "Add anyway": "Trotzdem hinzufügen",
     "White to make the first move": "Weiß muss den ersten Zug machen",
     "Black to make the first move": "Schwarz muss den ersten Zug machen",
-    "At the lock the league orders each side by rapid Elo: the strongest player plays board 1. In chess and Blockli the challenging clan has White on boards 1 and 3.": "Beim Lock ordnet die Liga jede Seite nach Rapid-Elo: Der stärkste Spieler spielt an Brett 1. Im Schach und in Blockli hat der herausfordernde Clan Weiß an den Brettern 1 und 3."
+    "At the lock the league orders each side by rapid Elo: the strongest player plays board 1. In chess and Blockli the challenging clan has White on boards 1 and 3.": "Beim Lock ordnet die Liga jede Seite nach Rapid-Elo: Der stärkste Spieler spielt an Brett 1. Im Schach und in Blockli hat der herausfordernde Clan Weiß an den Brettern 1 und 3.",
+    ":season: rated, counts for the ladder and mining. Casual: for fun, with its own Elo.": ":season: gewertet, zählt für Ladder und Mining. Casual: zum Spaß, mit eigener Elo.",
+    ":season is live: rated matches count for its ladders.": ":season läuft: Gewertete Matches zählen für ihre Ladders.",
+    ":game ladder, :season": ":game-Ladder, :season",
+    ":season has started: rated play and mining are open.": ":season hat begonnen: gewertete Spiele und Mining sind offen.",
+    "For fun, own Elo": "Zum Spaß, eigene Elo"
 }

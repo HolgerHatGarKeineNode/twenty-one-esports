@@ -293,6 +293,6 @@ test('in a live season the chess, board and Hyperbitcoinization heroes name the 
     HyperOn::play();
 
     foreach ([route('chess.lobby'), route('board.lobby', NineMensMorris::SLUG), route('hyper.index')] as $url) {
-        $this->get($url)->assertOk()->assertSee('Season 1 is live')->assertDontSee('Season {', false);
+        $this->get($url)->assertOk()->assertSee('Season 2 is live')->assertDontSee('Season {', false);
     }
 });

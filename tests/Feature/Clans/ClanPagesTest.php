@@ -190,7 +190,7 @@ test('the hashrate window switch names the live season and is gone before Block 
     openSeason(['slug' => 'season-2']);
 
     foreach ([route('clans.index'), route('clans.show', $clan)] as $url) {
-        $this->get($url)->assertOk()->assertSeeInOrder(['data-test="hashrate-window"', 'Season 2', '7 days'], false);
+        $this->get($url)->assertOk()->assertSeeInOrder(['data-test="hashrate-window"', 'Season 3', '7 days'], false);
     }
 });
 

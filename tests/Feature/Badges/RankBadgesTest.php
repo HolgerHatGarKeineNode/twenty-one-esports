@@ -84,7 +84,7 @@ test('ten rank changes give ten versions of the same definition and one award', 
         ->and(tagOf($definitions[9], 'thumb'))->toBe(['thumb', config('app.url').'/badges/rank/chess/grand-champion-1-v1-256.png', '256x256'])
         ->and(tagOf($definitions[9], 'p'))->toBe(['p', $user->pubkey])
         ->and(tagOf($definitions[9], 'a'))->toBe(['a', '32152:'.$this->season->league_pubkey.':chess/blitz/pre-season'])
-        ->and(tagOf($definitions[9], 'description')[1])->toContain('Pre-Season')
+        ->and(tagOf($definitions[9], 'description')[1])->toContain('Season 1')
         ->and($awards)->toHaveCount(1)
         ->and($awards[0]->pubkey)->toBe($this->badgeKey->pubkey)
         ->and(tagOf($awards[0], 'a'))->toBe(['a', $address])

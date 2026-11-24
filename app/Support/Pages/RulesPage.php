@@ -17,6 +17,7 @@ use App\Games\NineMensMorris;
 use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
+use App\Support\Badges\BadgeCopy;
 use App\Support\Board\BlockliRules;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\CheckersRules;
@@ -143,7 +144,7 @@ final class RulesPage
             'title' => __('Casual and rated'),
             'lead' => $season === null
                 ? __('Right now no season is live, so every match is casual.')
-                : __('Season :season is live: rated matches count for its ladders.', ['season' => $season]),
+                : __(':season is live: rated matches count for its ladders.', ['season' => BadgeCopy::season($season)]),
             'facts' => [
                 [__('Start rating'), (string) $rating['start']],
                 [__('Rating change (K)'), (string) $rating['k']],

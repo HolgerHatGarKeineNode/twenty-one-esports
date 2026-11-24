@@ -40,9 +40,21 @@ final class BadgeCopy
         ]);
     }
 
-    /** `pre-season` → "Pre-Season", `season-2` → "Season 2". */
+    /**
+     * A season's name on screen, the one source for it (plan "Season vs.
+     * Casual", P2, user decision 2026-11-24): the seasons are numbered in
+     * their order, so the first one, signed as `pre-season`, is "Season 1",
+     * `season-1` after it is "Season 2". The slug stays in data, events and
+     * URLs. Before Block 0 there is no season and nothing calls this.
+     */
     public static function season(string $slug): string
     {
-        return $slug === 'pre-season' ? __('Pre-Season') : ucwords(str_replace('-', ' ', $slug));
+        if ($slug === 'pre-season') {
+            return __('Season :number', ['number' => 1]);
+        }
+
+        return preg_match('/^season-(\d+)$/', $slug, $match) === 1
+            ? __('Season :number', ['number' => (int) $match[1] + 1])
+            : ucwords(str_replace('-', ' ', $slug));
     }
 }

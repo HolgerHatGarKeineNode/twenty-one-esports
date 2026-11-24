@@ -5,7 +5,10 @@ namespace App\Support\Notifications;
 use App\Enums\NotificationKind;
 use App\Models\Season;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
 use App\Support\PreSeason;
+use App\Support\SeasonChain\SeasonRelease;
+use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -56,7 +59,7 @@ final class BlockZeroNotifications
 
                 $this->notifier->send($user, NotificationKind::BlockZero, new Notice(
                     __('Block 0 is released', [], $locale),
-                    __('The Pre-Season has started: rated play and mining are open.', [], $locale),
+                    __(':season has started: rated play and mining are open.', ['season' => BadgeCopy::season(Ladders::season() ?? SeasonRelease::SLUG)], $locale),
                     route('mining'),
                     null,
                     __('View', [], $locale),

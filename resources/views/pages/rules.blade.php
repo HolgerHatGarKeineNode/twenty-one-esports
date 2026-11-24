@@ -18,7 +18,7 @@
             <p class="m-0 text-[15px] leading-relaxed text-ink-2">{{ __('How the league plays. Every number on this page is the one the league applies right now.') }}</p>
             <span @class(['inline-flex h-8 items-center gap-2 self-start rounded-md px-3 text-xs font-bold', 'bg-win-tint text-win' => $season !== null, 'bg-raised text-ink-2' => $season === null]) data-test="rules-season">
                 <span @class(['size-2 rounded-full', 'bg-win' => $season !== null, 'bg-edge' => $season === null]) aria-hidden="true"></span>
-                {{ $season === null ? __('Before Block 0: every match is casual') : __('Season :season is live', ['season' => $season]) }}
+                {{ $season === null ? __('Before Block 0: every match is casual') : __(':season is live', ['season' => \App\Support\Badges\BadgeCopy::season($season)]) }}
             </span>
         </header>
 

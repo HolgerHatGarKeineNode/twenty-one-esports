@@ -6,6 +6,7 @@ use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\FairPlay;
 use App\Support\Formats;
@@ -687,6 +688,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
     $opponents = $this->opponents;
     $picked = $opponents->first(fn ($row) => $row['lineup']->id === $opponentId);
     $ladderOpen = $lineup !== null && Ladders::isOpen($lineup->game, $lineup->mode);
+    $liveSeason = Ladders::season();
     // After Block 0 rated play also needs trust ranks (RatedTrustGate); without them it stays locked.
     $trustReady = app(RatedTrustGate::class)->isAvailable();
     // Fair play (P41): a linked second account or a player locked after false reports sees why, with the end.
@@ -729,7 +731,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
         <div class="flex min-w-0 flex-col gap-1">
             <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-[36px]">{{ __('Challenge a clan') }}</h1>
             @if ($headGame !== null)
-                <span class="text-[13px] text-ink-2">{{ __(':game ladder, Pre-Season', ['game' => $gameName]) }}</span>
+                <span class="text-[13px] text-ink-2">{{ $liveSeason === null ? __(':game ladder, Pre-Season', ['game' => $gameName]) : __(':game ladder, :season', ['game' => $gameName, 'season' => BadgeCopy::season($liveSeason)]) }}</span>
             @endif
         </div>
         @if ($lineup !== null)

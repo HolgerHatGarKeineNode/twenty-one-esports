@@ -449,7 +449,7 @@ final class SeasonSettlement
             $this->notifier->send($user, NotificationKind::SeasonPayout, new Notice(
                 __('Add a Lightning address to get your season sats', [], $locale),
                 __(':sats sats from the :season wait for you. Add a Lightning address to your Nostr profile; they wait :days days after the first season payout.', [
-                    'sats' => PreSeason::formatSats($sats), 'season' => $season->slug === 'pre-season' ? __('Pre-Season', [], $locale) : BadgeCopy::season($season->slug), 'days' => intdiv($season->claim_seconds, 86400),
+                    'sats' => PreSeason::formatSats($sats), 'season' => BadgeCopy::season($season->slug), 'days' => intdiv($season->claim_seconds, 86400),
                 ], $locale),
                 route('mining').'#season-payouts',
                 null,

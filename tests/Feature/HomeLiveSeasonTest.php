@@ -22,13 +22,13 @@ test('before Block 0 home shows the Pre-Season with the countdown to Block 0', f
         ->assertDontSee('data-test="season-live"', false);
 });
 
-test('the Season page names the live season in its rules, and the Pre-Season only before and during it (P16)', function (string $slug, string $heading) {
+test('the Season page names the live season in its rules by its number, the Pre-Season slug as Season 1 (P16, plan "Season vs. Casual" P2)', function (string $slug, string $heading) {
     openSeason(['slug' => $slug]);
 
     $this->get(route('mining'))->assertOk()
         // Live, how it works is a part of the closed reference at the end (plan "mining-page-clarity" P5): an h3 in it.
         ->assertSee('data-test="how-season">'.e($heading).'</h3>', false);
 })->with([
-    'a later season' => ['season-2', 'How Season 2 works'],
-    'the Pre-Season' => ['pre-season', 'How the Pre-Season works'],
+    'a later season' => ['season-2', 'How Season 3 works'],
+    'the first season' => ['pre-season', 'How Season 1 works'],
 ]);

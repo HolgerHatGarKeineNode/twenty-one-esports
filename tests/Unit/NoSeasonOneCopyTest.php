@@ -1,11 +1,13 @@
 <?php
 
 /*
- * The first chain season is the Pre-Season, and rated play starts at Block 0.
- * "Season 1" names a season that does not exist, so no string a player can
- * see may say it: Blade templates (outside {{-- --}} comments), PHP string
- * literals in app/ and the page components (outside PHP comments), the
- * front-end JS and every lang/*.json key and value.
+ * A season's name on screen has one source, BadgeCopy::season(): the first
+ * chain season (signed as `pre-season`) shows as "Season 1" since the user's
+ * decision of 2026-11-24 (plan "Season vs. Casual", P2), later ones by their
+ * order. So no string may spell "Season 1" itself and bypass that source:
+ * Blade templates (outside {{-- --}} comments), PHP string literals in app/
+ * and the page components (outside PHP comments), the front-end JS and every
+ * lang/*.json key and value.
  */
 
 const SEASON_ONE = '/\bSeason 1\b/i';

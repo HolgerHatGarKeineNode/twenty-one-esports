@@ -162,7 +162,7 @@ test('while a season runs the slide shows its mined blocks with height, reward a
         ->and(array_column($data['blocks'][1]['sides'], 'name'))->toBe(['Bob', 'Cat'])
         ->and($data['finished'])->toBe([])
         ->and(array_column($data['running'], 'state'))->toBe(['live'])
-        ->and($svg)->toContain('Pre-Season chain', 'Block 811', 'Block 812', '2,100 sats<', '4,200 sats<', '>block reward<', '>2,100 sats each<', '>Ada<', 'Bob +1', '>Mempool<', 'move 11')
+        ->and($svg)->toContain('Season 1 chain', 'Block 811', 'Block 812', '2,100 sats<', '4,200 sats<', '>block reward<', '>2,100 sats each<', '>Ada<', 'Bob +1', '>Mempool<', 'move 11')
         ->not->toContain('Block 813')
         ->not->toContain('9,999')
         ->not->toContain('Block 814')
@@ -179,7 +179,7 @@ test('an empty mempool invites to play, casual and in a season', function () {
 
     expect($casual)->toContain('The mempool is empty.', 'Start a game and it lands here first.', 'Your game', 'Start one now')
         ->and(substr_count($casual, 'stroke-dasharray="6 4"'))->toBe(15)
-        ->and($season)->toContain('Pre-Season chain', 'The first one is up for grabs.', 'Next block', 'Win a rated game', 'Your game')
+        ->and($season)->toContain('Season 1 chain', 'The first one is up for grabs.', 'Next block', 'Win a rated game', 'Your game')
         ->not->toContain('Block 0');
 });
 

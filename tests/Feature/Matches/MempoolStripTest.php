@@ -146,13 +146,13 @@ test('a block of another season names its season and links nowhere; only a block
 
     $blocks = collect(MempoolStrip::build()['finished'])->keyBy('key');
 
-    expect($blocks['series-'.$then->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 3, 'href' => null, 'text' => 'Block 3', 'note' => 'Pre-Season', 'title' => 'Block 3 of Pre-Season'])
+    expect($blocks['series-'.$then->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 3, 'href' => null, 'text' => 'Block 3', 'note' => 'Season 1', 'title' => 'Block 3 of Season 1'])
         ->and($blocks['chess-'.$now->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 3, 'href' => route('mining').'#block-3', 'note' => null]);
 
     $html = $this->get(route('matches.index'))->assertOk()->getContent();
 
     expect(substr_count($html, 'href="'.route('mining').'#block-3"'))->toBe(1)
-        ->and($html)->toContain('data-test="strip-block-note">Pre-Season</span>');
+        ->and($html)->toContain('data-test="strip-block-note">Season 1</span>');
 
     // Between seasons /mining shows the latest ended one: its blocks link, the older season's do not.
     $this->travel(31)->days();
