@@ -297,7 +297,7 @@
             <div id="blitz-help" x-show="help" x-cloak class="flex flex-col gap-2 border-t border-hairline px-2 pt-3 pb-1 text-[13px] leading-normal text-ink-2 lg:order-last lg:basis-full" data-test="blitz-help">
                 <p id="kind-why" class="m-0 max-w-[72ch]" data-test="kind-why">
 @if ($anyRefused)<span x-show="refusals[liveMode] !== null" x-text="refusals[liveMode]" @if ($defaultRefusal === null) x-cloak @endif>{{ $defaultRefusal }}</span>@endif
-                    @if (! $allRefused)<span x-show="refusals[liveMode] === null && ! rated" @if ($defaultRefusal !== null) x-cloak @endif>{{ __('Casual pairs you with anyone online and moves only your casual Elo.') }}</span> <span x-show="refusals[liveMode] === null && rated" x-cloak>{{ trans_choice('Rated pairs you only with a Trusted player you list each other with (you have :count).|Rated pairs you only with Trusted players you list each other with (you have :count).', $this->mutualOpponents) }}</span>@endif
+                    @if (! $allRefused)<span x-show="refusals[liveMode] === null && ! rated" @if ($defaultRefusal !== null) x-cloak @endif>{{ __('Casual pairs you with anyone online and moves only your casual Elo.') }}</span> <span x-show="refusals[liveMode] === null && rated" x-cloak>{{ trans_choice('Rated pairs you only with a Trusted player you list each other with (you have :count).|Rated pairs you only with Trusted players you list each other with (you have :count).', $this->mutualOpponents) }} <a href="{{ route('settings.opponents') }}" class="text-ink underline underline-offset-2 hover:text-btc-hi" data-test="kind-why-opponents">{{ __('Your opponents') }}</a></span>@endif
                 </p>
                 <p class="m-0 max-w-[72ch]">{{ __('Opponent strength') }}: {{ __('±:range around :rating, wider every :seconds s', ['range' => $range['initial'], 'rating' => $rating, 'seconds' => $range['every_seconds']]) }}</p>
                 <p class="m-0 max-w-[72ch]">{{ __('You join the queue and can cancel any time. The game starts as soon as someone in your range is found.') }}</p>
@@ -313,7 +313,9 @@
 
     {{-- "Your path to Season 1" (plan P4): the steps still missing, each with its fix; one line once rated is open; under the invite module, which opens in place above it. --}}
     @auth
-        <x-season.path game="chess" :mode="ChessModes::DEFAULT" />
+        <x-season.path game="chess" :mode="ChessModes::DEFAULT" :names="false" />
+        {{-- Plan P5: who the player lists each other with, who is online and who can play Season 1 now. --}}
+        <x-opponents.mutual game="chess" />
     @endauth
 
     <a href="{{ $teamHref }}" class="flex min-h-11 items-center gap-2 rounded-[4px] border border-line px-3 text-[13px] text-ink hover:text-ink lg:hidden" data-test="play-team-link">

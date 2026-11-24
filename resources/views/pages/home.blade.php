@@ -94,6 +94,8 @@
                 @include('pages.home.your-week', ['quests' => $quests, 'rating' => $rating])
             @endif
             @include('pages.home.season-card', ['season' => $season, 'user' => $user, 'quests' => $quests])
+            {{-- Plan "Season vs. Casual", P6: how to play Season 1, the season band's anchor. --}}
+            <div class="px-4 pt-4 pb-6 lg:p-0"><x-season.how /></div>
         </aside>
     </div>
 </x-layouts::app>

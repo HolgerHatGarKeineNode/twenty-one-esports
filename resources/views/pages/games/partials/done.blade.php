@@ -156,6 +156,11 @@
         </section>
     @endif
 
+    {{-- Plan "Season vs. Casual", P5: the opponent list grows here; add, accept, or "rated next time" (players only). --}}
+    @if ($rival)
+        <x-opponents.after-game :players="[$rival]" class="lg:max-w-[720px]" />
+    @endif
+
     {{-- Deadline missed (ChessStates) --}}
     @if ($missedDeadline && $color !== null)
         @php($lost = $color !== $winner)

@@ -112,6 +112,26 @@ final class Opponents
     }
 
     /**
+     * Where $player stands with $other (plan "Season vs. Casual", P5): on
+     * neither list, on $player's only (`listed`), on $other's only
+     * (`lists-you`: a request), or on both (`mutual`).
+     *
+     * @return 'none'|'listed'|'lists-you'|'mutual'
+     */
+    public function relation(User $player, User $other): string
+    {
+        $mine = $this->lists($player, $other);
+        $theirs = $this->lists($other, $player);
+
+        return match (true) {
+            $mine && $theirs => 'mutual',
+            $mine => 'listed',
+            $theirs => 'lists-you',
+            default => 'none',
+        };
+    }
+
+    /**
      * The entries of the player's list that list the player back.
      *
      * @return list<string> pubkeys

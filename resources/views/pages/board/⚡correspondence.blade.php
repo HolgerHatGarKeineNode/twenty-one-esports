@@ -538,7 +538,12 @@ new #[Layout('layouts::app')] class extends Component {
                             $ratedRefusal !== null => RatedTrustGate::message($ratedRefusal['message'], [$me->pubkey, $opponent?->pubkey ?? '']),
                             $opponent !== null => __('You and :name can play rated: a win counts for the ladder and can mine a season block.', ['name' => $opponent->displayName()]),
                             default => __('Rated needs a Trusted player you list each other with. A win can mine a season block.'),
-                        } }}</span>
+                        } }}
+                            {{-- Plan P5: a "not mutual" line leads to the fix (the box under it holds the add once rated is picked for that opponent). --}}
+                            @if (! $ownRefusal && ($opponent === null || ($ratedRefusal['message'] ?? null) === RatedTrustGate::NOT_CONNECTED))
+                                <a href="{{ route('settings.opponents') }}" class="text-ink underline underline-offset-2 hover:text-btc-hi" data-test="rated-why-opponents">{{ __('Your opponents') }}</a>
+                            @endif
+                        </span>
                     </div>
                     {{-- P57: the picked opponent and this player do not list each other; say so, and put the fix next to it. --}}
                     @if ($rated && $opponent && $ratedRefusal !== null && $ratedRefusal['message'] === RatedTrustGate::NOT_CONNECTED)

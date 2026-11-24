@@ -27,6 +27,9 @@ use Livewire\Component;
  * players do not list each other (challenge, answer, rated queue). Every
  * change dispatches `opponent-list-changed`, so such a notice re-renders.
  *
+ * Plan "Season vs. Casual", P5: `afterGame` (x-opponents.after-game, the end
+ * of a game) says what a mutual listing means there: rated next time.
+ *
  * D17 (plan "Profile standard and impersonation"): a player below the
  * profile standard or under an impersonation hold carries the same warning
  * as a request card on /settings/opponents ({@see AcceptWarnings}); the add
@@ -39,10 +42,14 @@ new class extends Component {
     #[Locked]
     public bool $inline = false;
 
-    public function mount(User $player, bool $inline = false): void
+    #[Locked]
+    public bool $afterGame = false;
+
+    public function mount(User $player, bool $inline = false, bool $afterGame = false): void
     {
         $this->playerId = $player->id;
         $this->inline = $inline;
+        $this->afterGame = $afterGame;
     }
 
     /**
@@ -161,8 +168,8 @@ new class extends Component {
                 @endif
                 <div class="flex min-w-0 flex-wrap items-center gap-2" @if ($warning) x-show="! confirming" @endif>
                     @if ($mine && $theirs)
-                        <span role="status" class="inline-flex h-11 min-w-0 items-center gap-2 rounded-md bg-win-tint px-3.5 text-[13px] text-win shadow-ring-win" data-test="opponent-mutual">
-                            <x-icon name="check" :size="16" class="shrink-0" /><span class="truncate">{{ __('You list each other') }}</span>
+                        <span role="status" @class(['inline-flex min-w-0 items-center gap-2 rounded-md bg-win-tint px-3.5 text-[13px] text-win shadow-ring-win', 'h-11' => ! $afterGame, 'min-h-11 py-2' => $afterGame]) data-test="opponent-mutual">
+                            <x-icon name="check" :size="16" class="shrink-0" /><span @class(['truncate' => ! $afterGame, 'min-w-0 [overflow-wrap:anywhere]' => $afterGame])>{{ $afterGame ? __('Mutual opponents, rated next time') : __('You list each other') }}</span>
                         </span>
                     @elseif ($mine)
                         <span role="status" class="inline-flex h-11 min-w-0 items-center gap-2 rounded-md bg-well px-3.5 text-[13px] text-ink-2 shadow-ring-hairline" data-test="opponent-listed">
@@ -175,8 +182,8 @@ new class extends Component {
                                 class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center rounded-md px-3 text-[13px] text-ink-2 hover:text-ink disabled:cursor-wait disabled:opacity-70">{{ __('Remove') }}</button>
                     @else
                         <button type="button" @if ($warning) x-ref="addButton" x-on:click="confirming = true; $nextTick(() => $refs.cancelAdd.focus())" x-bind:aria-expanded="confirming" @else x-on:click="run('prepareAdd', 'add')" @endif x-bind:disabled="busy" data-test="opponent-add"
-                                class="btn-w inline-flex h-11 min-w-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] font-bold whitespace-nowrap text-ink disabled:cursor-wait disabled:opacity-70">
-                            <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" /><span class="truncate">{{ $theirs ? __('Accept :name\'s request', ['name' => $name]) : ($inline ? __('Add :name as opponent', ['name' => $name]) : __('Add as opponent')) }}</span>
+                                @class(['btn-w inline-flex min-w-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70', 'h-11 whitespace-nowrap' => ! $afterGame, 'min-h-11 py-2 text-left' => $afterGame])>
+                            <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" /><span @class(['truncate' => ! $afterGame, 'min-w-0 [overflow-wrap:anywhere]' => $afterGame])>{{ $theirs ? __('Accept :name\'s request', ['name' => $name]) : ($inline ? __('Add :name as opponent', ['name' => $name]) : __('Add as opponent')) }}</span>
                         </button>
                     @endif
                 </div>

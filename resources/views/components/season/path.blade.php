@@ -1,4 +1,4 @@
-@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false])
+@props(['game' => null, 'mode' => null, 'opponent' => null, 'user' => null, 'compact' => false, 'names' => true])
 
 {{--
     "Your path to Season 1" (plan "Season vs. Casual", P4): what stands between the signed-in player and rated play,
@@ -10,7 +10,8 @@
     context (the add button for exactly that player), `user` another viewer than the signed-in one (tests only),
     `compact` the steps as one row of chips beside the heading (a done step green, an open one red with its fix as
     the link; on a phone the heading is for screen readers only), for a page with a height budget (/mining's hero,
-    where these chips stood before).
+    where these chips stood before). `names` false: the eligible line leaves the mutual opponents to
+    x-opponents.mutual right under it (plan P5: the lobbies and /me).
 --}}
 @php
     $viewer = $user ?? auth()->user();
@@ -24,7 +25,7 @@
             <p class="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-normal" data-test="season-path-eligible">
                 <x-icon name="check" :size="16" class="shrink-0 text-win" />
                 <b>{{ __('You can play :season', ['season' => $path['season']]) }}</b>
-                @if ($path['mutual'] !== [])
+                @if ($names && $path['mutual'] !== [])
                     <span class="text-ink-2">{{ __('Mutual opponents:') }}</span>
                     @foreach ($path['mutual'] as $mutual)
                         <a href="{{ $mutual['href'] }}" class="rv-tag max-w-[16ch] truncate text-ink hover:text-ink" data-test="season-path-mutual">{{ $mutual['name'] }}</a>

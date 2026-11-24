@@ -27,6 +27,10 @@
                 <x-doc-section :id="$section['id']" :title="$section['title']">
                     @isset($section['game'])<x-game-credit :game="$section['game']" class="-mt-2" />@endisset
                     <p class="m-0 max-w-[68ch] text-[15px] leading-relaxed">{{ $section['lead'] }}</p>
+                    {{-- Plan "Season vs. Casual", P6: how to play Season 1, at the season's anchor. --}}
+                    @if ($section['id'] === 'season-chain')
+                        <x-season.how class="max-w-[720px] shadow-ring" />
+                    @endif
 
                     @if (! empty($section['facts']))
                         <dl class="m-0 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-test="rules-facts">

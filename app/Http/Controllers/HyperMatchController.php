@@ -124,6 +124,8 @@ class HyperMatchController extends Controller
             'back' => route('hyper.index', absolute: false),
             // A player's own seat in a running rated match: what leaving it (or letting the turns run out) costs.
             'forfeit' => $this->forfeitWarning($match, $viewer),
+            // Plan "Season vs. Casual", P5: the human players a player of this match can add as opponents at its end.
+            'rivals' => $this->rivals($match, $viewer),
             'config' => [
                 'urls' => [
                     'snapshot' => route('hyper.snapshot', $match, false),
@@ -472,6 +474,22 @@ class HyperMatchController extends Controller
             ...FairPlay::forfeitWarning($viewer),
             'timeouts' => __(':count turns in a row that run out count as leaving: a loss, no season block at this table, and it counts toward the lock from rated play.', ['count' => (int) config('esports.hyper.takeover_timeouts', 3)]),
         ];
+    }
+
+    /**
+     * The other human players of the match (a bot seat has no user), for a player of it; nobody for anybody else.
+     *
+     * @return list<User>
+     */
+    private function rivals(HyperMatch $match, ?User $viewer): array
+    {
+        $seats = $match->seats()->whereNotNull('user_id')->get(['user_id']);
+
+        if ($viewer === null || ! $seats->contains('user_id', $viewer->id)) {
+            return [];
+        }
+
+        return array_values(User::query()->whereIn('id', $seats->pluck('user_id'))->whereKeyNot($viewer->id)->get()->all());
     }
 
     private function viewer(Request $request): ?User

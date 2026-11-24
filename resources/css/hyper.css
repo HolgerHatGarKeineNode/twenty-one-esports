@@ -173,6 +173,9 @@ button:focus-visible { outline: 2px solid var(--btc-hi); outline-offset: 3px; }
 @keyframes sweep { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 .big:disabled { filter: grayscale(0.85) brightness(0.55); cursor: not-allowed; }
 .big:disabled::after { display: none; }
+/* The other players to add as opponents at the end (plan "Season vs. Casual", P5). */
+.end-rivals { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.end-rivals .muted { margin: 0; }
 .ghost { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; font-weight: 700; background: url(/hyper/art/btn-secondary.webp?v=1) center / 100% 100% no-repeat, rgba(16, 28, 58, 0.92); box-shadow: inset 0 0 0 1px var(--line); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .ghost svg { width: 18px; height: 18px; }
 .ghost:hover:not(:disabled) { background: rgba(40, 56, 100, 0.95); }

@@ -671,6 +671,18 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     @include('pages.board.partials.result')
                 @endif
 
+                {{-- Plan "Season vs. Casual", P5: once the game is over its players can add each other (outside the result's
+                     x-if, so the Livewire button is not cloned by Alpine; the page's state shows it when the game ends). --}}
+                @php
+                    $viewerColor = $boardGame->colorOf(auth()->user());
+                    $rival = $viewerColor === null || \App\Support\SeasonChain\OpponentLists::forLeague() === null ? null : $boardGame->player($viewerColor === 'w' ? 'b' : 'w');
+                @endphp
+                @if ($rival !== null)
+                    <div x-show="state.status === 'finished'" @if ($boardGame->isActive()) x-cloak @endif>
+                        <x-opponents.after-game :players="[$rival]" />
+                    </div>
+                @endif
+
                 {{-- The moves, two columns per move number as on daily chess; browsing steps through them. --}}
                 <div @class(['flex flex-col gap-2 rounded-lg bg-card p-4', 'min-h-0 lg:grow min-[87.5rem]:shrink' => ! $stones, 'lg:flex-[1_1_0px] lg:[@media(max-height:899px)]:order-last' => $stones]) data-test="moves-card">
                     <div class="flex items-center justify-between gap-2">

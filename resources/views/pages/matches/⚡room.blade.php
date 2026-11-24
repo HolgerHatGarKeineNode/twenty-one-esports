@@ -1071,6 +1071,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <x-button :href="route('challenges.create', ['lineup' => $ownLineup->id, 'to' => $theirLineup->id, 'game' => $m->game])" icon="retry" class="shrink-0" data-test="series-challenge-again">{{ __('Challenge again') }}</x-button>
                 </section>
             @endif
+
+            {{-- Plan "Season vs. Casual", P5: the players of the other side, to add as opponents (players of this match only). --}}
+            @if ($mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
+                <x-opponents.after-game :players="\App\Models\User::query()->whereIn('id', array_slice($m->rosterSide(SeriesMatch::otherSide($mySide)), 0, 6))->get()->all()" />
+            @endif
         @endif
 
     {{-- Get into the game: answer the challenge, or the lobby and the check-in. --}}

@@ -773,4 +773,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @endif
         </details>
     </section>
+
+    {{-- Plan "Season vs. Casual", P6: how to play Season 1, the season band's anchor. --}}
+    <x-season.how class="lg:max-w-[720px]" />
 </div>

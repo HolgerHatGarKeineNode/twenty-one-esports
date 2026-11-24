@@ -193,7 +193,9 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                 <h2 id="me-ratings-h" class="rv-h3">{{ __('Your ratings') }}</h2>
                 @include('partials.season-casual-legend')
                 {{-- "Your path to Season 1" (plan "Season vs. Casual", P4): the steps still missing, each with its fix. --}}
-                <x-season.path />
+                <x-season.path :names="false" />
+                {{-- Plan P5: who the player lists each other with, who is online and who can play Season 1 now. --}}
+                <x-opponents.mutual />
                 @if ($ratings === [])
                     <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="me-ratings-empty">{{ __('Your rating shows here after your first result.') }}</p>
                 @else

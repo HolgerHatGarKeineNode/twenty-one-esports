@@ -59,5 +59,8 @@
                 @endif
             @endforeach
         </ul>
+
+        {{-- Plan "Season vs. Casual", P6: how to play Season 1, after the games (the first screen stays theirs). --}}
+        <x-season.how class="lg:max-w-[720px]" />
     </div>
 </x-layouts::app>

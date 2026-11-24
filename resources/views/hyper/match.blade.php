@@ -260,6 +260,14 @@
             <button class="ghost" id="end-map" type="button">{{ __('Look at the map') }}</button>
         </div>
         <p class="muted" id="rematch-note" aria-live="polite" data-test="hyper-rematch-note"></p>
+        {{-- Plan "Season vs. Casual", P5: the other players, to add as opponents (on their player page; requests on the opponents page). --}}
+        @if (! $replay && ($rivals ?? []) !== [])
+            <div class="end-rivals" data-test="hyper-end-opponents">
+                @foreach ($rivals as $rival)
+                    <x-opponents.after-game-link :opponent="$rival" class="ghost" text-class="muted" target="_blank" rel="noopener" />
+                @endforeach
+            </div>
+        @endif
     </div>
 </div>
 

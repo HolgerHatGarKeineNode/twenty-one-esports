@@ -9726,5 +9726,20 @@
     "Mutual opponents:": "Gegenseitige Gegner:",
     "Rated from :time": "Gewertet ab :time",
     "No NIP-05 address": "Keine NIP-05-Adresse",
-    "No name or profile picture": "Kein Name oder Profilbild"
+    "No name or profile picture": "Kein Name oder Profilbild",
+    "Rated next time?": "Nächstes Mal gewertet?",
+    ":season counts only between players who list each other as opponents.": ":season zählt nur zwischen Spielern, die sich gegenseitig als Gegner eingetragen haben.",
+    "Mutual opponents, rated next time": "Ihr seid gegenseitige Gegner – nächstes Mal gewertet",
+    "Rated next time once :name adds you back": "Nächstes Mal gewertet, sobald :name dich auch einträgt",
+    "Mutual opponents": "Gegenseitige Gegner",
+    "Challenge to :season": "Zu :season herausfordern",
+    ":season ready": ":season möglich",
+    "Casual only for now": "Vorerst nur Casual",
+    ":season rated needs you both to list each other.": "Gewertet in :season braucht, dass ihr euch gegenseitig eintragt.",
+    ":mutual of your :count opponent lists you back.|:mutual of your :count opponents list you back.": ":mutual von deinem :count Gegner trägt dich auch ein.|:mutual von deinen :count Gegnern tragen dich auch ein.",
+    "Rated: two Trusted players who list each other.": "Gewertet: zwei Trusted-Spieler, gegenseitig eingetragen.",
+    "How to play :season": "So spielst du :season",
+    "Become Trusted": "Trusted werden",
+    "Add each other as opponents": "Gegner gegenseitig eintragen",
+    "Play rated, mine the next block": "Gewertet spielen und den nächsten Block schürfen"
 }

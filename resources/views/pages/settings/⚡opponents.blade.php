@@ -146,6 +146,14 @@ new #[Title('Opponents')] class extends Component {
      x-data="nostrAction({ pubkey: @js($user->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
     <x-settings.header current="opponents" />
 
+    {{-- Plan "Season vs. Casual", P5: the rule in one line, and how far the player's own list carries it. --}}
+    @if ($open)
+        <p class="m-0 flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px] leading-normal" data-test="opponent-season-line">
+            <b>{{ __(':season rated needs you both to list each other.', ['season' => \App\Support\Badges\BadgeCopy::season(\App\Support\Series\Ladders::season() ?? 'pre-season')]) }}</b>
+            @if ($entries !== [])<span class="text-ink-2" data-test="opponent-season-count">{{ trans_choice(':mutual of your :count opponent lists you back.|:mutual of your :count opponents list you back.', count($entries), ['mutual' => count($mutual), 'count' => count($entries)]) }}</span>@endif
+        </p>
+    @endif
+
     @error('opponents')<p class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
     <p x-show="error" x-text="error" x-cloak class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert"></p>
 

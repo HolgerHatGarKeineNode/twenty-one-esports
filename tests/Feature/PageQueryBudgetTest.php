@@ -205,11 +205,15 @@ function budgetLoad(string $uri): array
  * @var array<string, array{0: int|null, 1: int}>
  */
 const PAGE_BUDGETS = [
-    'rules' => [5, 36],
+    // +4 for the player (plan "Season vs. Casual", P6): "How to play Season 1" shows the player's own state, the gate as a
+    // lobby reads it (SeasonPath: trust run, own list, who lists back) and the open-ladder game played most for its last step.
+    'rules' => [5, 40],
     // +1 (plan "Schach Rapid und Clan", P1): every ladder opens only once published, read in one query per request.
     // +1 (P6): the chess team matches being played now (HomeHub::liveTeamMatches()), one query whatever the count.
     'home' => [31, 73],
-    'play' => [3, 40],
+    // +4 for the player (plan "Season vs. Casual", P6): "How to play Season 1" shows the player's own state, the gate as a
+    // lobby reads it (SeasonPath: trust run, own list, who lists back) and the open-ladder game played most for its last step.
+    'play' => [3, 44],
     // +4 for the player (plan "Refactor und Design-Revamp", P6): the game's chat in the right rail (TournamentDetail.dc.html,
     // <livewire:game-channel>): the viewer's account by key, whether they played rated (ratings, lineup seats), their mutes.
     'tournaments.show' => [30, 86],
@@ -234,7 +238,9 @@ const PAGE_BUDGETS = [
     'scores.show' => [9, 42],
     // +2 (plan "Schach Rapid und Clan", P1): the published-ladder read and the player's chess rapid rating.
     // +1 (plan "Season vs. Casual", P4): "Your path to Season 1" under the ratings (the mutual opponents' names).
-    'dashboard' => [null, 69],
+    // +1 (P5): "Mutual opponents" under the path reads the player's mutual list once more (online and ready per row only
+    // when there is one).
+    'dashboard' => [null, 70],
 ];
 
 test('the hot routes stay within their total query budget, as a guest and as the active player, and load without a Livewire roundtrip', function () {

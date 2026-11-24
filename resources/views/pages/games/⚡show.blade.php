@@ -674,6 +674,13 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             @else
                                                 <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
                                             @endif
+                                            {{-- Plan "Season vs. Casual", P5: the opponent list, added on the finished game's page (x-opponents.after-game). --}}
+                                            @if ($opponent !== null)
+                                                <template x-if="state.status === 'finished'">
+                                                    <div class="flex flex-col empty:hidden"><x-opponents.after-game-link :opponent="$opponent['user']" :href="route('games.show', $game).'#after-game-opponents'" text-class="text-center text-[13px] text-ink-2"
+                                                        class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" /></div>
+                                                </template>
+                                            @endif
                                             {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
                                             <template x-if="color && state.rating?.[color]?.pool === 'rated'">
                                                 <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>

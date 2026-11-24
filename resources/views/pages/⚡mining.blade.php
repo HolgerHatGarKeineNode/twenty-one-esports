@@ -906,6 +906,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <x-icon name="chevron-down" :size="18" class="shrink-0 text-ink-2 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <div class="flex min-w-0 flex-col gap-6 border-t border-hairline px-4 pt-4 pb-5 lg:px-6">
+                {{-- Plan "Season vs. Casual", P6: how to play Season 1 first; folded in here, so the page keeps its height budget. --}}
+                <x-season.how compact stateless />
                 @include('partials.season-rules', ['laterSeason' => $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live(), 'bare' => true])
                 @include('partials.mining-rules')
                 @include('partials.mining-review')
@@ -913,6 +915,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             </div>
         </details>
     @else
+        <x-season.how />
         @include('partials.season-rules', ['laterSeason' => $live && $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live()])
     @endif
 </div>

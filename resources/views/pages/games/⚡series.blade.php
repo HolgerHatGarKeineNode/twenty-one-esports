@@ -669,6 +669,9 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
             </details>
         </div>
 
+        {{-- Plan "Season vs. Casual", P6: how to play Season 1, under the game's own content. --}}
+        <x-season.how />
+
     <x-slot:secondary>
         <x-game.secondary :label="__('Invite, follows')">
             {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups). --}}

@@ -141,7 +141,7 @@ test('open: two Trusted players who list each other search Rated and get a rated
     listOpponent($anna, $annaSigner, $bert);
     listOpponent($bert, $bertSigner, $anna);
 
-    expect(ratedChoice($anna))->toBe(['true', 'Casual pairs you with anyone online and moves only your casual Elo. Rated pairs you only with a Trusted player you list each other with (you have 1).']);
+    expect(ratedChoice($anna))->toBe(['true', 'Casual pairs you with anyone online and moves only your casual Elo. Rated pairs you only with a Trusted player you list each other with (you have 1). Your opponents']);
 
     Livewire::actingAs($anna)->test('pages::chess.lobby')->call('findOpponent', true, 'blitz')->assertSet('error', '')->assertSee('Blitz · rated');
     expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeTrue();

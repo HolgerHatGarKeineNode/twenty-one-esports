@@ -4,9 +4,10 @@
     The figures are HomeBoard::season(), the same as the season card and /mining. Render it only while a season
     runs ($season['live']); it renders nothing otherwise.
 
-    $season: HomeBoard::season(); $viewer: the viewer or null (for the time zone); $test: the data-test prefix.
+    $season: HomeBoard::season(); $viewer: the viewer or null (for the time zone); $test: the data-test prefix;
+    $how: where "How to play" leads (plan "Season vs. Casual", P6: the page's x-season.how).
 --}}
-@props(['season', 'viewer' => null, 'test' => 'season-band'])
+@props(['season', 'viewer' => null, 'test' => 'season-band', 'how' => '#season-how'])
 
 @php
     use App\Support\Engagement\HomeBoard;
@@ -30,6 +31,8 @@
             </span>
             <h2 id="{{ $test }}-h" class="rv-h2 max-lg:text-[20px]">{{ __('Season') }} <span class="text-btc tabular-nums" data-test="{{ $test }}-height">{{ __('Block :height', ['height' => HomeBoard::sats((int) $season['height'])]) }}</span></h2>
             <span class="text-[13px] text-ink-2">{{ __('Every fair rated win mines the next block of the season chain.') }}</span>
+            {{-- Plan P6: what rated needs, in one line, and the way to the explainer. --}}
+            <span class="text-[13px] text-ink-2" data-test="{{ $test }}-needs">{{ __('Rated: two Trusted players who list each other.') }} <a href="{{ $how }}" class="rv-lk whitespace-nowrap" data-test="{{ $test }}-how">{{ __('How it works') }}</a></span>
         </div>
         @if ($open !== [])
             <ul class="m-0 flex list-none flex-wrap gap-2 p-0 lg:max-w-[46%]" data-test="{{ $test }}-keys">
