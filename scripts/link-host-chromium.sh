@@ -153,9 +153,15 @@ REV_TOT=$(php -r '
         if ($b["name"] === "chromium-tip-of-tree") { echo $b["revision"]; return; }
     }
     exit(1);
-' "$BROWSERS_JSON")
-link chromium_tip_of_tree chrome-linux64 chrome "$WEBGL_FLAGS" "$REV_TOT"
-link chromium_tip_of_tree_headless_shell chrome-headless-shell-linux64 chrome-headless-shell "$WEBGL_FLAGS" "$REV_TOT"
+' "$BROWSERS_JSON") || REV_TOT=""
+# Playwright 1.65 dropped the tip-of-tree channel from browsers.json; without it there is nothing to point, so the
+# plain browser above still links and only the WebGL file loses its software-GL channel.
+if [ -n "$REV_TOT" ]; then
+    link chromium_tip_of_tree chrome-linux64 chrome "$WEBGL_FLAGS" "$REV_TOT"
+    link chromium_tip_of_tree_headless_shell chrome-headless-shell-linux64 chrome-headless-shell "$WEBGL_FLAGS" "$REV_TOT"
+else
+    echo "link-host-chromium: no chromium-tip-of-tree in $BROWSERS_JSON, software-WebGL channel skipped"
+fi
 
 echo "link-host-chromium: $ROOT/{chromium,chromium_headless_shell}-$REV -> $REAL_BIN ($("$REAL_BIN" --version 2>/dev/null | head -1))"
 
