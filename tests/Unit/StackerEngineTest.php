@@ -12,7 +12,7 @@ use Illuminate\Process\Factory;
  * replay viewer's seek (P5, replay-player.test.mjs), 11 for the cheat hints (P5, hints.test.mjs), 7 for the week rules (rules.test.mjs).
  */
 test('the Blockfill engine replays its reference runs and keeps its rules', function () {
-    nodeTest('tests/js/stacker', 105);
+    nodeTest('tests/js/stacker/*.test.mjs', 105);
 });
 
 test('the server and the engine read a week\'s rules alike: the same gravity curve, the same bounds and the same id for every rule set', function () {
