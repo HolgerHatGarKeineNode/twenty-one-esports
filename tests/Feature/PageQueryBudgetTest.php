@@ -221,7 +221,9 @@ const PAGE_BUDGETS = [
     // +4 for the player (plan "mining-page-clarity", P2): the viewer's standing in the live hero. This world has no trust
     // run, so the hero asks whether one exists and stops there; then the own opponent list, who lists them back and today's
     // blocks, one query each whatever the number of opponents. With a trust run (production) see the budget below.
-    'mining' => [23, 58],
+    // +1 for the player (plan "Season vs. Casual", P4): "Your path to Season 1" replaced the trust and opponents chips;
+    // the open-ladder game played most for the primary button (chess games, board games grouped by game) costs one more.
+    'mining' => [23, 59],
     'games.index' => [5, 36],
     // +8 (plan "Refactor und Design-Revamp", P7, Mempool.dc.html): "gerade eben" (latest moves, results and checked runs,
     // HomeBoard::ticker()) and the proud moments (HomeBoard::pride()) the start page shows too; the advanced statistics
@@ -231,7 +233,8 @@ const PAGE_BUDGETS = [
     // running leaderboard and the weekly dates (WeeklySlots::upcoming()).
     'scores.show' => [9, 42],
     // +2 (plan "Schach Rapid und Clan", P1): the published-ladder read and the player's chess rapid rating.
-    'dashboard' => [null, 68],
+    // +1 (plan "Season vs. Casual", P4): "Your path to Season 1" under the ratings (the mutual opponents' names).
+    'dashboard' => [null, 69],
 ];
 
 test('the hot routes stay within their total query budget, as a guest and as the active player, and load without a Livewire roundtrip', function () {
@@ -323,6 +326,9 @@ test('a closed rapid ladder costs no more queries than an open one, on every pag
     $open = array_map(fn (string $uri): int => budgetLoad($uri)['queries'], $uris);
 
     NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/rapid/'.Ladders::season()])->delete();
+    // A query-builder delete skips NostrEvent::booted(), so the last load's memo of published ladders (on the request the
+    // test still holds; /mining reads the ladders on every render since plan "Season vs. Casual", P4) is dropped by hand.
+    Ladders::forget();
     expect(Ladders::isOpen('chess', 'rapid'))->toBeFalse()->and(Ladders::isOpen('chess', 'blitz'))->toBeTrue();
 
     $closed = array_map(fn (string $uri): int => budgetLoad($uri)['queries'], $uris);
@@ -342,9 +348,11 @@ test('a closed rapid ladder costs no more queries than an open one, on every pag
 /**
  * /mining for the player once a trust run exists, measured 64 on 2026-11-21: the 58 of PAGE_BUDGETS plus the trust facts
  * of the viewer (AnchoredTrustFacts: account_links, fair_play_bars, false_reports, users, hyper_seats) and the rank
- * (trust_ranks), one query each whatever the season's size.
+ * (trust_ranks), one query each whatever the season's size. 69 since plan "Season vs. Casual", P4 (measured 2026-11-24):
+ * "Your path to Season 1" reads the gate as a lobby does (trust run, fair play, the profile standard, the own list and
+ * who lists back), and the primary button counts the player's games per open-ladder game (chess, board), one query each.
  */
-const MINING_PLAYER_WITH_TRUST_RUN_BUDGET = 64;
+const MINING_PLAYER_WITH_TRUST_RUN_BUDGET = 69;
 
 test('the live hero of /mining stays within its budget once a trust run exists', function () {
     $this->travelTo(now()->setTime(12, 0));
@@ -360,7 +368,7 @@ test('the live hero of /mining stays within its budget once a trust run exists',
 
     $load = budgetLoad(route('mining'));
 
-    expect($load['html'])->toContain('data-test="standing-trust" data-state="ok"')
+    expect($load['html'])->toContain('data-test="season-path-step" data-key="trust" data-done="true"')
         ->and($load['queries'])->toBeLessThanOrEqual(MINING_PLAYER_WITH_TRUST_RUN_BUDGET);
 });
 

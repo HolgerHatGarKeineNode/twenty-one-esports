@@ -106,6 +106,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
         }
 
         $this->fitBestOf();
+
+        if ($this->opponentId !== null) {
+            $this->rated = $this->pairRefusal === null;
+        }
     }
 
     /** Validates the step on screen and opens the next one. */
@@ -260,6 +264,32 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
         $this->viaLink = false;
         $this->error = '';
         $this->resetErrorBag('opponentId');
+        unset($this->pairRefusal);
+        $this->rated = $this->pairRefusal === null;
+    }
+
+    /**
+     * Why the picked lineup and this one cannot play a rated challenge now, as a RatedTrustGate code or a sentence
+     * (plan "Season vs. Casual", P3: rated is preselected when this is null, casual otherwise, with the reason on
+     * screen): rated closed for the lineup (ladder, trust ranks, fair play), or the gate between the lineups and a
+     * captain of theirs (RatedTrustGate::forChallenge). `no_opponent` without a picked lineup.
+     */
+    #[Computed]
+    public function pairRefusal(): ?string
+    {
+        $theirs = $this->opponents->first(fn (array $row): bool => $row['lineup']->id === $this->opponentId)['lineup'] ?? null;
+
+        if ($theirs === null || $this->lineup === null) {
+            return 'no_opponent';
+        }
+
+        if (! $this->ratedOpen()) {
+            return 'rated_closed';
+        }
+
+        $captains = array_values(array_diff(app(SeriesService::class)->captainPubkeys($theirs), [$this->user()->pubkey]));
+
+        return app(RatedTrustGate::class)->forChallenge($this->lineup, $theirs, $this->user(), $captains);
     }
 
     /** "No opponent here yet? Invite by link": on to the format and the times, the link is made at the end. */
@@ -860,6 +890,14 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
                         </button>
                     </div>
                     @error('rated')<p class="m-0 text-[13px] text-loss" role="alert" data-test="step-error">{{ $message }}</p>@enderror
+                    {{-- Plan "Season vs. Casual", P3: why this pair plays casual (rated is preselected when it can play rated). --}}
+                    @if ($ratedOpen && ! $viaLink && ! in_array($this->pairRefusal, [null, 'no_opponent', 'rated_closed'], true))
+                        <p class="m-0 max-w-[68ch] text-xs leading-normal text-ink-2" data-test="rated-pair-why">{{ RatedTrustGate::message($this->pairRefusal, [$me->pubkey]) }}</p>
+                    @endif
+                    @if ($lineup !== null && ! $viaLink)
+                        {{-- "Your path to Season 1" (plan P4), against a captain of the picked clan when there is one. --}}
+                        <x-season.path :game="$lineup->game" :mode="$lineup->mode" :opponent="$picked !== null ? User::query()->whereIn('pubkey', array_values(array_diff(app(SeriesService::class)->captainPubkeys($picked['lineup']), [$me->pubkey])))->orderBy('id')->first() : null" />
+                    @endif
                     @unless ($ladderOpen)
                         <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Until Block 0 every series is casual: you can challenge any clan, no connection needed. Rated opens at Block 0, with a connection between both captains.') }}</p>
                     @endunless

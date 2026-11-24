@@ -31,7 +31,9 @@ use Livewire\Component;
  * (theirs to move first, soonest deadline first), the challenges sent
  * (withdraw), and the form to challenge a player.
  *
- * Casual by default. While the rated queue of the board games is offered
+ * Rated preselected when the picked pair can play rated now, casual
+ * otherwise, the reason under the choice (plan "Season vs. Casual", P3),
+ * and "Your path to Season 1" under it. While the rated queue of the board games is offered
  * (RatedBoard::offered()) the form offers "Rated", disabled with the reason
  * while rated play is closed for this player; with an opponent picked who
  * does not list each other with them, the P57 notice says so and puts the
@@ -82,6 +84,16 @@ new #[Layout('layouts::app')] class extends Component {
 
         $this->slug = $board;
         $this->linkedId = $this->opponent?->id;
+        $this->preselectRated();
+    }
+
+    /**
+     * Rated when the picked pair can play rated now, casual otherwise (plan
+     * "Season vs. Casual", P3); the reason stays on screen under the choice.
+     */
+    private function preselectRated(): void
+    {
+        $this->rated = $this->opponent !== null && $this->ratedOffered && $this->ratedRefusal === null;
     }
 
     /**
@@ -123,6 +135,7 @@ new #[Layout('layouts::app')] class extends Component {
         $this->to = (string) $id;
         $this->error = '';
         unset($this->named, $this->opponent, $this->openWithOpponent, $this->toProblem, $this->players, $this->ratedRefusal);
+        $this->preselectRated();
     }
 
     public function send(): void
@@ -163,6 +176,7 @@ new #[Layout('layouts::app')] class extends Component {
     public function opponentListChanged(): void
     {
         unset($this->ratedRefusal);
+        $this->preselectRated();
     }
 
     /** Whether the page offers rated challenges at all (the rated queue switch, P6). */
@@ -519,7 +533,12 @@ new #[Layout('layouts::app')] class extends Component {
                             <button type="button" role="radio" wire:click="$set('rated', true)" aria-checked="{{ $rated ? 'true' : 'false' }}" @disabled($ownRefusal) data-test="type-rated"
                                     @class(['h-11 cursor-pointer rounded-md border bg-ground text-[13px] text-ink disabled:cursor-not-allowed disabled:opacity-50', 'border-btc' => $rated, 'border-line' => ! $rated])>{{ __('Rated') }}</button>
                         </div>
-                        <span class="text-xs leading-normal text-ink-2" data-test="rated-why">{{ $ownRefusal ? $ratedRefusal['message'] : __('Rated needs a Trusted player you list each other with. A win can mine a season block.') }}</span>
+                        <span class="text-xs leading-normal text-ink-2" data-test="rated-why">{{ match (true) {
+                            $ownRefusal => $ratedRefusal['message'],
+                            $ratedRefusal !== null => RatedTrustGate::message($ratedRefusal['message'], [$me->pubkey, $opponent?->pubkey ?? '']),
+                            $opponent !== null => __('You and :name can play rated: a win counts for the ladder and can mine a season block.', ['name' => $opponent->displayName()]),
+                            default => __('Rated needs a Trusted player you list each other with. A win can mine a season block.'),
+                        } }}</span>
                     </div>
                     {{-- P57: the picked opponent and this player do not list each other; say so, and put the fix next to it. --}}
                     @if ($rated && $opponent && $ratedRefusal !== null && $ratedRefusal['message'] === RatedTrustGate::NOT_CONNECTED)
@@ -528,6 +547,8 @@ new #[Layout('layouts::app')] class extends Component {
                         </x-opponents.needs-mutual>
                     @endif
                 @endif
+                {{-- "Your path to Season 1" (plan P4): what is missing for rated play, against the picked opponent once there is one. --}}
+                <x-season.path :game="$slug" :mode="BoardGame::CORRESPONDENCE" :opponent="$opponent" />
 
                 <div class="flex flex-col gap-2">
                     <span class="flex flex-wrap items-baseline justify-between gap-2"><label for="corr-message" class="text-xs text-ink-2">{{ __('Message') }}</label><span class="text-xs text-ink-3">{{ __('optional, up to 140 characters') }}</span></span>

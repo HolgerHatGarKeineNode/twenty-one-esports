@@ -6,6 +6,7 @@ use App\Models\HyperTableSeat;
 use App\Models\User;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
+use App\Support\Hyper\HyperMining;
 use App\Support\Hyper\HyperRuleViolation;
 use App\Support\Hyper\HyperSeason;
 use App\Support\Hyper\HyperTeams;
@@ -222,6 +223,7 @@ new class extends Component {
     $limitLabel = fn (int $limit): string => $limit === 0 ? __('No round limit') : __(':rounds rounds', ['rounds' => $limit]);
     // Rated once it starts without bots, in a live season, unless it is a friendly match (P5c).
     $seasonLive = HyperSeason::seasonFor() !== null;
+    $seasonName = ($liveSeason = \App\Support\SeasonChain\Seasons::live()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSeason->slug);
     $ratedTag = fn (HyperTable $table): string => ! $table->friendly && $seasonLive
         ? '<span class="'.$tag.' font-bold text-ink" data-test="hyper-lobby-rated" data-rated="1">'.e(__('Rated')).'</span>'
         : '<span class="'.$tag.'" data-test="hyper-lobby-rated" data-rated="0">'.e(__('Unrated')).'</span>';
@@ -400,10 +402,20 @@ new class extends Component {
                     default => __('You fill free seats with bots when you like.'),
                 } }}{{ $mode === HyperMatch::LIVE ? '' : ' '.__('One turn a day.') }}</span>
                 <span class="basis-full text-xs text-ink-2" data-test="hyper-lobby-rating-note">{{ $friendly ? __('A friendly match is never rated.') : ($seasonLive ? __('Rated in the season when no bot plays.') : __('No season is live: matches are unrated.')) }}</span>
+                @if (! $friendly && $seasonLive)
+                    {{-- Plan "Season vs. Casual", P3: what a rated table plays for, from HyperMining (no toggle: rated follows from the seats). --}}
+                    <span class="basis-full text-xs text-ink-2" data-test="hyper-lobby-season-note">{{ ($reward = HyperMining::rewardNow($mode)) > 0
+                        ? __(':season: the winner mines :sats sats when every seat is Trusted and lists the others as opponents.', ['season' => $seasonName, 'sats' => \App\Support\Formats::number($reward)])
+                        : __(':season: a rated table counts for the season; this mode mines no block yet.', ['season' => $seasonName]) }}</span>
+                @endif
                 @if ($clans)
                     <span class="basis-full text-xs text-ink-2">{{ __('Your clan takes one side; the first player of another clan takes the other. A clan linked to a meetup plays as that meetup.') }}</span>
                 @endif
             </div>
+            @if (! $friendly && $seasonLive && $viewer !== null)
+                {{-- "Your path to Season 1" (plan P4): the steps this player's seat still misses for a table that mines. --}}
+                <x-season.path :game="HyperMining::GAME" :mode="$mode" />
+            @endif
         </form>
     @endif
 

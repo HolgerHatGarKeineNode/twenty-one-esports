@@ -230,7 +230,11 @@ new class extends Component {
     <div class="flex flex-col gap-2">
         <span class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             {{-- Below md the segmented control above names the card. --}}
-            <h2 id="pong-live-h" class="m-0 scroll-mt-24 text-[14px] font-bold">{{ __('Live 1v1') }}</h2>
+            <span class="flex flex-wrap items-center gap-2">
+                <h2 id="pong-live-h" class="m-0 scroll-mt-24 text-[14px] font-bold">{{ __('Live 1v1') }}</h2>
+                {{-- Plan "Season vs. Casual", P3: Proof of Pong has no rated play; it says so instead of leaving it open. --}}
+                <span class="rv-tag whitespace-nowrap" data-test="pong-kind">{{ __('Casual · no Season') }}</span>
+            </span>
             @if ($user)
                 <x-lobby.looking-toggle :on="$user->looking_to_play === PongInvites::LOOKING" />
             @endif

@@ -69,7 +69,11 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
     /**
      * The challenges on offer, in the registry's order of games, the casual 1v1 last.
      *
-     * @return list<array{key: string, game: ?string, title: string, line: string, href: string}>
+     * Each with `rated`: whether this challenge can be rated now (plan "Season vs. Casual", P3): never for daily chess
+     * and the casual 1v1; for a board game when rated is open for the viewer and, with a player named, for the pair
+     * (RatedBoard::refusal(), pairRefusal()). The page it leads to preselects the same.
+     *
+     * @return list<array{key: string, game: ?string, title: string, line: string, href: string, rated: bool}>
      */
     #[Computed]
     public function options(): array
@@ -81,7 +85,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
         foreach ($registry->all() as $slug => $game) {
             if ($slug === 'chess') {
                 $options[] = ['key' => 'chess', 'game' => 'chess', 'title' => GameNames::game('chess'),
-                    'line' => __('Correspondence, one move a day'), 'href' => route('chess.challenge', $to)];
+                    'line' => __('Correspondence, one move a day'), 'href' => route('chess.challenge', $to), 'rated' => false];
             } elseif ($game instanceof BoardGame && $registry->mode($slug, BoardGameModel::CORRESPONDENCE) !== null && Route::has('board.correspondence')) {
                 // A group of games is one option, the first of its games with the mode (GameRegistry::listed()).
                 if (BoardChallenges::members($slug)[0] !== $slug) {
@@ -89,7 +93,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
                 }
 
                 $options[] = ['key' => $slug, 'game' => $slug, 'title' => GameNames::listed($slug),
-                    'line' => __('Correspondence, one move a day'), 'href' => route('board.correspondence', ['board' => $slug, ...$to])];
+                    'line' => __('Correspondence, one move a day'), 'href' => route('board.correspondence', ['board' => $slug, ...$to]), 'rated' => $this->canPlayRated($slug)];
             }
         }
 
@@ -99,14 +103,29 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
             $options[] = ['key' => 'casual', 'game' => null, 'title' => __('Schedule a 1v1'),
                 // The games only: that the time is agreed on is what "Schedule" says, and the line stays one row.
                 'line' => $games,
-                'href' => route('challenges.casual', array_filter(['to' => $this->opponent?->id]))];
+                'href' => route('challenges.casual', array_filter(['to' => $this->opponent?->id])), 'rated' => false];
         }
 
         return $options;
     }
+
+    /** Whether a correspondence challenge of this board game can be rated now, for the viewer and the named player. */
+    private function canPlayRated(string $slug): bool
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || app(\App\Support\Board\RatedBoard::class)->refusal($user, $slug, BoardGameModel::CORRESPONDENCE) !== null) {
+            return false;
+        }
+
+        return $this->opponent === null || app(\App\Support\Board\RatedBoard::class)->pairRefusal($user, $this->opponent) === null;
+    }
 }; ?>
 
-@php($opponent = $this->opponent)
+@php
+    $opponent = $this->opponent;
+    $seasonName = ($liveSeason = \App\Support\Series\Ladders::season()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSeason);
+@endphp
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[880px] lg:px-4 lg:pb-10" data-test="challenge-player">
     <div class="flex flex-col gap-1">
         <h1 class="m-0 flex min-w-0 items-center gap-3 font-display text-[24px] leading-tight font-bold sm:text-[28px] lg:text-[32px]">
@@ -136,12 +155,17 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <span class="truncate text-[15px] font-bold">{{ $option['title'] }}</span>
                         <span class="text-[13px] leading-snug text-ink-2">{{ $option['line'] }}</span>
+                        {{-- Plan "Season vs. Casual", P3: what this challenge can be, for this pair, before the click. --}}
+                        <span @class(['rv-tag self-start whitespace-nowrap', 'is-btc' => $option['rated']]) data-test="challenge-option-kind" data-rated="{{ $option['rated'] ? 'true' : 'false' }}">{{ $option['rated'] ? $seasonName : __('Casual') }}</span>
                     </span>
                     <x-icon name="chevron-down" :size="18" class="ms-auto hidden shrink-0 -rotate-90 text-ink-3 sm:block" />
                 </a>
             </li>
         @endforeach
     </ul>
+
+    {{-- "Your path to Season 1" (plan P4), against the named player when there is one. --}}
+    <x-season.path :opponent="$opponent" />
 
     <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">
         {{ __('Blitz and rapid are played live: invite a friend who is online in the game\'s lobby.') }}

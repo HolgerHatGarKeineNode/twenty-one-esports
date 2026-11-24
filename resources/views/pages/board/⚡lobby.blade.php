@@ -22,6 +22,7 @@ use App\Support\GameNames;
 use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Builder;
@@ -254,25 +255,90 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 
     private function refusalIn(string $mode): ?string
     {
+        return $this->reasonIn($mode)['message'] ?? null;
+    }
+
+    /**
+     * The refusals with their class, as the chess lobby's ratedReasons()
+     * (plan "Season vs. Casual", P3): the word on the Rated option names the
+     * kind of reason (`badge`), the line under the choice says what to do
+     * (`line`), with a link where a page helps (`href`, `cta`). `message`
+     * stays the full sentence a refused search answers with.
+     *
+     * @return array<string, array{kind: string, badge: string, message: string, line: string, href: string|null, cta: string|null}|null>
+     */
+    #[Computed]
+    public function ratedReasons(): array
+    {
+        return collect($this->liveModes)->mapWithKeys(function (string $mode): array {
+            $reason = $this->reasonIn($mode);
+
+            return [$mode => $reason === null ? null : [
+                ...$reason,
+                'badge' => match ($reason['kind']) {
+                    'login' => __('log in first'),
+                    'season' => __('from Block 0'),
+                    'later' => __('opens later'),
+                    'barred' => __('barred'),
+                    'standard' => __('profile not ready'),
+                    'held' => __('account being checked'),
+                    'trust' => __('Trusted needed'),
+                    'opponent' => __('opponent missing'),
+                    default => __('not open yet'),
+                },
+                'line' => match ($reason['kind']) {
+                    'trust' => __('Rated from trust rank :minimum. It rises when members add you as an opponent.', ['minimum' => RatedTrustGate::minimum()]),
+                    'opponent' => __('Rated needs an opponent who adds you back.'),
+                    default => $reason['message'],
+                },
+                'href' => match ($reason['kind']) {
+                    'login' => route('login'),
+                    'trust', 'opponent' => route('settings.opponents'),
+                    'standard' => route('settings.opponents').'#rated-standard',
+                    default => null,
+                },
+                'cta' => match ($reason['kind']) {
+                    'login' => __('Log in'),
+                    'trust', 'opponent' => __('Your opponents'),
+                    'standard' => __('What is missing'),
+                    default => null,
+                },
+            ]];
+        })->all();
+    }
+
+    /**
+     * Why this player cannot search a rated game in this mode now, with its
+     * kind (RatedBoard::reason(), plus `login` for a guest and `opponent`
+     * for a player who lists each other with nobody), or null.
+     *
+     * @return array{kind: string, message: string}|null
+     */
+    private function reasonIn(string $mode): ?array
+    {
+        if (! RatedBoard::offered() && Ladders::isOpen($this->slug, $mode)) {
+            return ['kind' => 'closed', 'message' => __('Rated :game is not open yet. Games are casual for now.', ['game' => GameNames::game($this->slug)])];
+        }
+
         $user = auth()->user();
 
         if (! $user instanceof User) {
             return match (true) {
-                Ladders::isOpen($this->slug, $mode) => __('Log in to play rated games.'),
+                Ladders::isOpen($this->slug, $mode) => ['kind' => 'login', 'message' => __('Log in to play rated games.')],
                 // A season live since before the board games joined: their ladder opens with the board's next rule change.
-                Seasons::live() !== null => __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::game($this->slug)]),
-                default => Seasons::restMessage(),
+                Seasons::live() !== null => ['kind' => 'later', 'message' => __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::game($this->slug)])],
+                default => ['kind' => 'season', 'message' => Seasons::restMessage()],
             };
         }
 
-        $refusal = app(RatedBoard::class)->refusal($user, $this->slug, $mode);
+        $reason = app(RatedBoard::class)->reason($user, $this->slug, $mode);
 
-        if ($refusal !== null) {
-            return $refusal;
+        if ($reason !== null) {
+            return $reason;
         }
 
         return $this->mutualOpponents === 0
-            ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
+            ? ['kind' => 'opponent', 'message' => __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')]
             : null;
     }
 
@@ -328,7 +394,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     #[On('opponent-list-changed')]
     public function opponentListChanged(): void
     {
-        unset($this->ratedQueue, $this->mutualOpponents, $this->ratedRefusal, $this->ratedRefusals);
+        unset($this->ratedQueue, $this->mutualOpponents, $this->ratedRefusal, $this->ratedRefusals, $this->ratedReasons);
     }
 
     public function cancelSearch(): void

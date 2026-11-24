@@ -14,8 +14,10 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /*
- * Challenge a player to daily chess (ChessChallenge.dc.html). Until Elo
- * exists (P7) every game is casual: "Rated" is shown disabled, the trust
+ * Challenge a player to daily chess (ChessChallenge.dc.html). Daily chess
+ * has no rated play (DailyChallenges), so every game is casual: "Rated" is
+ * shown disabled with that reason and the way to the season's live chess
+ * (plan "Season vs. Casual", P3), the trust
  * column and the Elo stakes of the design are left out. A live game with a
  * friend stays in the lobby ("invite a friend who is online"), one card per
  * live mode of the registry (rapid 10+5 and blitz 5+3, plan "Schach Rapid und
@@ -236,9 +238,12 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <h2 id="gt-h" class="m-0 text-[15px] font-bold">{{ __('Game type') }}</h2>
                     <div role="radiogroup" aria-labelledby="gt-h" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
                         <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span></span>
-                        <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
+                        <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2" data-test="daily-rated-state">{{ __('not offered yet') }}</span></span>
                     </div>
                     <p class="m-0 text-xs leading-normal text-ink-2">{{ __('A casual game moves only the casual Elo: no rank, Block Height or Clan Hashrate.') }}</p>
+                    {{-- Plan "Season vs. Casual", P3: daily chess has no rated play at all (DailyChallenges sends casual challenges only), so it stays casual for every pair, and says where the season is played. --}}
+                    <p class="m-0 text-xs leading-normal text-ink-2" data-test="daily-rated-why">{{ __('Rated daily chess is not offered yet. :season chess is played live in the lobby, rapid or blitz.', ['season' => ($liveSeason = \App\Support\Series\Ladders::season()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSeason)]) }}
+                        <a href="{{ route('chess.lobby') }}" class="rv-lk inline-flex min-h-6 items-center font-bold whitespace-nowrap">{{ __('Chess lobby') }}</a></p>
                 </div>
             </section>
 

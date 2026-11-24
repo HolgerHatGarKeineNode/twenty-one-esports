@@ -7,9 +7,11 @@ use App\Models\HyperAction;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\User;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -53,6 +55,29 @@ final class HyperMining
         $live = Seasons::live();
 
         return $live === null ? 0 : $live->chainParameters()->inForceAt($at ?? CarbonImmutable::now())->weightFor(self::GAME.'/'.$mode);
+    }
+
+    /**
+     * What a match won now mines in this mode, in sats, as the lobby tells it (plan "Season vs. Casual", P3; the chain
+     * figures of ChainOverview, as RatedChess::rewardsNow()); 0 while the mode has no weight or no season is live.
+     */
+    public static function rewardNow(string $mode): int
+    {
+        $season = Seasons::live();
+
+        if ($season === null || self::weight($mode) === 0) {
+            return 0;
+        }
+
+        $read = fn (): int => (int) (app(ChainOverview::class)->live($season)['rewards_now'][self::GAME.'/'.$mode] ?? 0);
+
+        try {
+            return (int) Cache::remember('hyper:reward-now:'.$season->id.':'.$mode, 60, $read);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $read();
+        }
     }
 
     /** A rated free-for-all or 1v1 of the live season outside a tournament: the only matches that can mine. */

@@ -3,14 +3,12 @@
 use App\Models\Season;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeasonPayout;
-use App\Models\TrustRank;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\ShareMoments;
 use App\Support\Chess\RatedChess;
 use App\Support\Engagement\HomeBoard;
-use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
@@ -19,13 +17,11 @@ use App\Support\Prizes\PoolInvoices;
 use App\Support\QrCode;
 use App\Support\Rating\LadderBoard;
 use App\Support\SeasonChain\ChainOverview;
-use App\Support\SeasonChain\OpponentLists;
-use App\Support\SeasonChain\Opponents;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonRelease;
+use App\Support\SeasonChain\SeasonPath;
 use App\Support\SeasonChain\SeasonSettlement;
 use App\Support\SeasonChain\Seasons;
-use App\Support\SeasonChain\TrustFacts;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
@@ -113,10 +109,10 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     }
 
     /**
-     * The viewer's own standing for rated chess in a live season (plan "mining-page-clarity" P2, canvas SeasonLive,
-     * NEU (Scope) approved 2026-11-20): the trust rank from the member network against the minimum, the players they
-     * list each other with, and their chess blocks today against the daily limit. Only the viewer sees it, never a
-     * guest or another player; a chip that blocks rated play links to its fix. Scalars only.
+     * The viewer's chess blocks today against the daily limit (plan "mining-page-clarity" P2, canvas SeasonLive, NEU
+     * (Scope) approved 2026-11-20), the one chip left beside "Your path to Season 1" (plan "Season vs. Casual", P4:
+     * x-season.path took over the trust and opponents chips, with every step and its fix). Only the viewer sees it,
+     * never a guest or another player; null without a daily limit. Scalars only.
      *
      * @return list<array{key: string, state: 'ok'|'bad'|'wait', label: string, href: string|null, cta: string|null, title: string|null}>|null
      */
@@ -130,35 +126,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             return null;
         }
 
-        // The same facts the gate reads (AnchoredTrustFacts: the published rank, the archived lists), read once each.
-        $facts = app(TrustFacts::class);
-        $minimum = RatedTrustGate::minimum();
         $chips = [];
-
-        if (! $facts->available()) {
-            $chips[] = ['key' => 'trust', 'state' => 'wait', 'label' => __('Trust ranks not computed yet'), 'href' => null, 'cta' => null, 'title' => RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED)];
-        } elseif (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
-            // Below the profile standard is no bar an admin set: the chip says so and leads to the steps. A held account
-            // reads only that it is being checked, with nothing to click.
-            $chips[] = match (FairPlay::barred([$user->pubkey])[$user->pubkey]['kind'] ?? null) {
-                'standard' => ['key' => 'trust', 'state' => 'bad', 'label' => __('Profile not ready for rated play'), 'href' => route('settings.opponents').'#rated-standard', 'cta' => __('What is missing'), 'title' => $barred],
-                'held' => ['key' => 'trust', 'state' => 'wait', 'label' => __('Account being checked'), 'href' => null, 'cta' => null, 'title' => $barred],
-                default => ['key' => 'trust', 'state' => 'bad', 'label' => __('Barred from rated play'), 'href' => null, 'cta' => null, 'title' => $barred],
-            };
-        } else {
-            $rank = (int) (TrustRank::query()->where('pubkey', $user->pubkey)->value('rank') ?? 0);
-            $trusted = $rank >= $minimum;
-            $chips[] = ['key' => 'trust', 'state' => $trusted ? 'ok' : 'bad', 'label' => __('Trust rank :rank, needs :minimum', ['rank' => $rank, 'minimum' => $minimum]),
-                'href' => $trusted ? null : route('settings.opponents'), 'cta' => $trusted ? null : __('How it rises'),
-                'title' => $trusted ? null : __('Rated from trust rank :minimum. It rises when members add you as an opponent.', ['minimum' => $minimum])];
-        }
-
-        // Mutual: on my newest list, and their newest list names me (Opponents::mutual(), in two reads instead of one per entry).
-        $lists = OpponentLists::forLeague();
-        $mutual = $lists === null ? 0 : count(array_intersect(app(Opponents::class)->entries($user), $lists->listing($user->pubkey)));
-        $chips[] = $mutual > 0
-            ? ['key' => 'opponents', 'state' => 'ok', 'label' => trans_choice(':count mutual opponent|:count mutual opponents', $mutual), 'href' => null, 'cta' => null, 'title' => null]
-            : ['key' => 'opponents', 'state' => 'bad', 'label' => __('No mutual opponent'), 'href' => route('settings.opponents'), 'cta' => __('Add one'), 'title' => __('Rated needs an opponent who adds you back.')];
 
         $inForce = $this->chain['in_force'];
         $limit = $inForce->dailyLimitFor('chess');
@@ -172,7 +140,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 'href' => null, 'cta' => null, 'title' => $today >= $limit ? __('The daily limit is reached; the next block counts from midnight UTC.') : null];
         }
 
-        return $chips;
+        return $chips === [] ? null : $chips;
     }
 
     /**
@@ -330,13 +298,24 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <h2 id="mine-h" class="m-0 max-w-[26ch] font-display text-[22px] leading-[1.15] font-bold lg:text-[36px]">{{ __('Win a rated game, mine the next block') }}</h2>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                     @if ($viewer instanceof User)
-                        <a href="{{ route('chess.lobby') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated">{{ RatedChess::offered() ? __('Play rated chess') : __('Play a casual game') }}</a>
+                        {{-- Plan "Season vs. Casual", P4: the open-ladder game this player played most (league-wide over 14 days without one), by name. --}}
+                        @php
+                            $toMine = SeasonPath::gameToMine($viewer);
+                        @endphp
+                        @if ($toMine !== null)
+                            <a href="{{ $toMine['href'] }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated" data-game="{{ $toMine['slug'] }}">{{ $toMine['rated'] ? __('Play rated :game', ['game' => $toMine['name']]) : __('Play :game casual', ['game' => $toMine['name']]) }}</a>
+                        @else
+                            <a href="{{ route('chess.lobby') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="rated">{{ RatedChess::offered() ? __('Play rated chess') : __('Play a casual game') }}</a>
+                        @endif
                     @else
                         <a href="{{ route('login') }}" class="rv-b h-[52px] px-6" data-test="mining-primary" data-variant="login">{{ __('Log in to mine') }}</a>
                     @endif
                     <a href="#season-reference" class="rv-lk inline-flex min-h-11 items-center text-[13px]" data-test="mining-how"
                        x-data x-on:click="const d = document.getElementById('season-reference'); (d?.tagName === 'DETAILS' ? d : d?.querySelector('details'))?.setAttribute('open', '')">{{ __('How mining works') }}</a>
                 </div>
+                @if ($viewer instanceof User)
+                    <x-season.path compact />
+                @endif
                 @if ($standing !== null)
                     <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="{{ __('Your standing for rated play') }}" data-test="mining-standing">
                         @foreach ($standing as $chip)
@@ -357,7 +336,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                             </li>
                         @endforeach
                     </ul>
-                @else
+                @elseif (! $viewer instanceof User)
                     <p class="m-0 max-w-[60ch] text-xs text-ink-2" data-test="mining-guest-note">{{ __('Rated play needs trust rank :minimum and an opponent who adds you back.', ['minimum' => RatedTrustGate::minimum()]) }}</p>
                 @endif
             </div>

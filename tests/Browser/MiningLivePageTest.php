@@ -35,9 +35,9 @@ pest()->group('browser');
 | Plan "mining-page-clarity" (P2 to P5), fix round after the review of
 | 2026-11-21: the season runs on ChainDraft::defaults() with every game that
 | is on in production switched on (chess 50, board games 30, Hyperbitcoinization
-| 20), read by a guest and by a logged-in player whose standing chips show
-| (an admin below the trust minimum without a mutual opponent: the longest
-| chips), with no block and with 8 blocks (and a win that did not mine), in German at 390 and 1440 px and in
+| 20), read by a guest and by a logged-in player whose "Your path" steps show
+| (an admin below the trust minimum without a mutual opponent: the trust and
+| opponent steps open, each with its button, beside the "today" chip), with no block and with 8 blocks (and a win that did not mine), in German at 390 and 1440 px and in
 | English at 390 once, every disclosure closed. The primary button ends inside
 | the first screen (above the tab bar on a phone), nothing is wider than the
 | window or its card, the page stays within 2532 px at 390 and 2250 px at
@@ -138,6 +138,7 @@ const MINING_LIVE_READ = <<<'JS'
         open: [...root.querySelectorAll('details[open]')].map(name),
         empty: root.querySelectorAll('[data-test=chain-empty]').length,
         chips: root.querySelectorAll('[data-test=mining-standing] li').length,
+        steps: [...root.querySelectorAll('[data-test=season-path-step][data-done=false]')].map((li) => li.dataset.key + (li.querySelector('[data-test=season-path-fix]') ? '+button' : '')),
         anchors: [...root.querySelectorAll('[id^=block-]')].map((el) => el.id),
         cubes,
         cubeViewport: cubeViewport ? Math.round(cubeViewport.height) : null,
@@ -153,7 +154,7 @@ test('the live season on the production share set reads within its limits: the p
     $maxHeight = $width < 1024 ? 2532 : 2250;
 
     if ($viewer === 'player') {
-        // Logged in with the longest chips: below the trust minimum and no mutual opponent, both red with a link.
+        // Logged in with the longest path: below the trust minimum and no mutual opponent, both open with a button.
         $user = User::factory()->create(['name' => 'Erdöpfökasbrot', 'timezone' => 'UTC']);
         Admin::query()->create(['pubkey' => $user->pubkey]);
         miningTrustRun($user, max(0, $season->minimum_trust - 38));
@@ -220,7 +221,8 @@ test('the live season on the production share set reads within its limits: the p
     expect($read['lang'])->toBe($locale)
         ->and($read['state'])->toBe('live')
         ->and($read['empty'])->toBe($blocks === 0 ? 1 : 0)
-        ->and($read['chips'])->toBe($viewer === 'player' ? 3 : 0)
+        ->and($read['chips'])->toBe($viewer === 'player' ? 1 : 0)
+        ->and($read['steps'])->toBe($viewer === 'player' ? ['trust+button', 'opponents+button'] : [])
         ->and($read['open'])->toBe([])
         ->and($read['primary'])->not->toBeNull()
         ->and($read['primary'][1])->toBeLessThanOrEqual($read['fold'], 'the primary button ends below the first screen')

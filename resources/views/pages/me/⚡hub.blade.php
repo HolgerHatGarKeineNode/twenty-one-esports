@@ -192,6 +192,8 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
             <section aria-labelledby="me-ratings-h" class="flex min-w-0 flex-col gap-3" data-test="me-ratings">
                 <h2 id="me-ratings-h" class="rv-h3">{{ __('Your ratings') }}</h2>
                 @include('partials.season-casual-legend')
+                {{-- "Your path to Season 1" (plan "Season vs. Casual", P4): the steps still missing, each with its fix. --}}
+                <x-season.path />
                 @if ($ratings === [])
                     <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="me-ratings-empty">{{ __('Your rating shows here after your first result.') }}</p>
                 @else

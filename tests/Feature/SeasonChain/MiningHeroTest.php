@@ -2,9 +2,10 @@
 
 /*
  * The live hero of /mining (plan "mining-page-clarity" P2, canvas SeasonLive): one primary action per viewer (a guest
- * logs in, a player plays rated chess), and the player's own standing for rated play as chips from real data: the
- * trust rank against the minimum, the players they list each other with, and their chess blocks today against the
- * daily limit. A chip that blocks rated play links to its fix. The stat tile shows the cheapest to the dearest win.
+ * logs in, a player plays the open-ladder game they played most, by name: plan "Season vs. Casual", P4), and the
+ * player's own standing for rated play from real data: "Your path to Season 1" (x-season.path) with the trust rank
+ * against the minimum and the players they list each other with, a step that blocks rated play linking to its fix,
+ * and their chess blocks today against the daily limit as a chip. The stat tile shows the cheapest to the dearest win.
  */
 
 use App\Models\NostrEvent;
@@ -63,11 +64,19 @@ function heroTrustRun(array $ranks): void
     }
 }
 
-/** The hero's primary action and the standing chips (state, text, link) of /mining for this viewer. */
+/** The hero's primary action, the standing chips and the path's steps (state or done, text, link) of /mining for this viewer. */
 function heroOf(?User $viewer): array
 {
     $html = html_entity_decode((string) ($viewer ? test()->actingAs($viewer) : test())->get(route('mining'))->assertOk()->getContent());
-    preg_match('/data-test="mining-primary" data-variant="([a-z]+)">([^<]+)</', $html, $primary);
+    preg_match('/data-test="mining-primary" data-variant="([a-z]+)"[^>]*>([^<]+)</', $html, $primary);
+    preg_match_all('/data-test="season-path-step" data-key="([a-z0-9]+)" data-done="(true|false)">(.*?)<\/li>/s', $html, $steps, PREG_SET_ORDER);
+    $path = [];
+
+    foreach ($steps as [$all, $key, $done, $inner]) {
+        preg_match('/<a href="([^"]+)"/', $inner, $link);
+        $path[$key] = [$done === 'true' ? 'ok' : 'bad', trim((string) preg_replace('/\s+/', ' ', strip_tags($inner))), $link[1] ?? null];
+    }
+
     preg_match_all('/data-test="standing-([a-z]+)" data-state="([a-z]+)">(.*?)<\/li>/s', $html, $chips, PREG_SET_ORDER);
     $standing = [];
 
@@ -76,7 +85,7 @@ function heroOf(?User $viewer): array
         $standing[$key] = [$state, trim((string) preg_replace('/\s+/', ' ', strip_tags($inner))), $link[1] ?? null];
     }
 
-    return ['primary' => [$primary[1] ?? null, trim($primary[2] ?? '')], 'standing' => $standing, 'html' => $html];
+    return ['primary' => [$primary[1] ?? null, trim($primary[2] ?? '')], 'standing' => $standing, 'path' => $path, 'html' => $html];
 }
 
 test('a guest gets the log-in action and a line on what rated play needs, never a standing', function () {
@@ -88,11 +97,12 @@ test('a guest gets the log-in action and a line on what rated play needs, never 
         ->and($hero['html'])->toContain('href="'.route('login').'" class="rv-b h-[52px] px-6" data-test="mining-primary"')
         ->toContain('Rated play needs trust rank 50 and an opponent who adds you back.')
         ->not->toContain('data-test="mining-standing"')
+        ->not->toContain('data-test="season-path"')
         // The live state names the state, not the season ("Pre-Season" read as not started yet).
         ->and($hero['html'])->toMatch('/data-test="season-state">Live since /');
 });
 
-test('an eligible player gets rated chess and three green chips: trust rank, mutual opponents, chess blocks today', function () {
+test('an eligible player gets rated chess, "You can play Season 1" and a green chip of chess blocks today', function () {
     openSeason();
     $anna = heroPlayer('anna');
     $bert = heroPlayer('bert');
@@ -101,17 +111,16 @@ test('an eligible player gets rated chess and three green chips: trust rank, mut
 
     $hero = heroOf($anna[0]);
 
-    expect($hero['primary'])->toBe(['rated', 'Play rated chess'])
+    expect($hero['primary'])->toBe(['rated', 'Play rated Chess'])
+        ->and($hero['html'])->toContain('data-test="season-path" data-state="eligible"')->toContain('You can play Season 1')
         ->and($hero['standing'])->toBe([
-            'trust' => ['ok', 'Trust rank 80, needs 50', null],
-            'opponents' => ['ok', '1 mutual opponent', null],
             'today' => ['ok', 'Chess today 0 of 5 blocks', null],
         ])
         // Another player's figures never reach this viewer.
         ->and($hero['html'])->not->toContain('Trust rank 90');
 });
 
-test('a player below the trust minimum sees a red trust chip that links to the opponents page', function () {
+test('a player below the trust minimum sees a red trust step that links to the opponents page', function () {
     openSeason();
     $anna = heroPlayer('anna');
     $bert = heroPlayer('bert');
@@ -120,23 +129,23 @@ test('a player below the trust minimum sees a red trust chip that links to the o
 
     $hero = heroOf($anna[0]);
 
-    expect($hero['primary'])->toBe(['rated', 'Play rated chess'])
-        ->and($hero['standing']['trust'])->toBe(['bad', 'Trust rank 12, needs 50 How it rises', route('settings.opponents')])
-        ->and($hero['standing']['opponents'][0])->toBe('ok');
+    expect($hero['primary'])->toBe(['rated', 'Play rated Chess'])
+        ->and($hero['path']['trust'])->toBe(['bad', 'Trust rank 12, needs 50 How it rises', route('settings.opponents')])
+        ->and($hero['path']['opponents'][0])->toBe('ok');
 });
 
-test('a player without a mutual opponent sees a red opponents chip that links to the opponents page', function () {
+test('a player without a mutual opponent sees a red opponents step that links to the opponents page', function () {
     openSeason();
     [$anna] = heroPlayer('anna');
     heroTrustRun([$anna->pubkey => 80]);
 
     $hero = heroOf($anna);
 
-    expect($hero['standing']['trust'][0])->toBe('ok')
-        ->and($hero['standing']['opponents'])->toBe(['bad', 'No mutual opponent Add one', route('settings.opponents')]);
+    expect($hero['path']['trust'][0])->toBe('ok')
+        ->and($hero['path']['opponents'])->toBe(['bad', 'No mutual opponent Your opponents', route('settings.opponents')]);
 });
 
-test('a one-sided list is no mutual opponent: the chip counts only players who list each other', function () {
+test('a one-sided list is no mutual opponent: the step counts only players who list each other', function () {
     openSeason();
     $anna = heroPlayer('anna');
     $bert = heroPlayer('bert');
@@ -145,15 +154,15 @@ test('a one-sided list is no mutual opponent: the chip counts only players who l
     $opponents = app(Opponents::class);
     $opponents->add($anna[0], $bert[0], $anna[1]->signTemplates($opponents->prepareAdd($anna[0], $bert[0])));
 
-    expect(heroOf($anna[0])['standing']['opponents'])->toBe(['bad', 'No mutual opponent Add one', route('settings.opponents')])
-        ->and(heroOf($bert[0])['standing']['opponents'][1])->toBe('No mutual opponent Add one');
+    expect(heroOf($anna[0])['path']['opponents'])->toBe(['bad', 'No mutual opponent Your opponents', route('settings.opponents')])
+        ->and(heroOf($bert[0])['path']['opponents'][1])->toBe('No mutual opponent Your opponents');
 });
 
-test('before trust ranks are computed the trust chip waits instead of naming a rank', function () {
+test('before trust ranks are computed the path waits with the gate\'s message instead of naming a rank', function () {
     openSeason();
     [$anna] = heroPlayer('anna');
 
-    expect(heroOf($anna)['standing']['trust'])->toBe(['wait', 'Trust ranks not computed yet', null]);
+    expect(heroOf($anna)['html'])->toContain('data-test="season-path" data-state="blocked" data-kind="closed"')->not->toContain('data-test="season-path-step"');
 });
 
 test('the chess blocks of today count the viewer\'s own blocks against the daily limit', function () {

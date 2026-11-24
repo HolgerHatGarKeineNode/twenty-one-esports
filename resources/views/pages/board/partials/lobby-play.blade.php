@@ -11,9 +11,15 @@
     open panel ('quick' | null), the page's `liveMode` the mode it plays
     (boardLobby), `rated` the Casual/Rated choice sent with "Find opponent".
 
-    Rated is selectable only while the board games' rated queue is offered
-    and open for this player (RatedBoard); otherwise it is disabled with a
-    short badge on the option and the reason behind "?".
+    Season 1 or Casual (plan "Season vs. Casual", P3): the choice is on screen
+    before any click, under the ways to play (it sat inside the panel a tile
+    opens, so nobody saw it), each mode's row tags whether it plays Season 1,
+    and the rated option says what a win mines now. Rated is selectable only
+    while the board games' rated queue is offered and open for this player
+    (RatedBoard::reason()); otherwise it is disabled with the badge of the
+    kind of reason, the line under the choice says what to do, and the full
+    sentence stays behind "?". Under the panel "Your path to Season 1"
+    (x-season.path) lists the steps still missing.
 --}}
 @php
     use App\Games\GameRegistry;
@@ -26,8 +32,10 @@
     $range = config('esports.board_games.queue.range');
     $liveModes = $this->liveModes;
     $hasLive = $liveModes !== [];
-    // Each live mode's casual rating, its clock ("5+3" from 300+3), its name and its rated refusal: the panel switches with liveMode.
-    $ratings = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => Ratings::forUser($user?->id, $slug, $mode, \App\Models\Rating::CASUAL)['rating']])->all();
+    // Each live mode's rating in both pools (the search queues with the chosen pool's, BoardQueue::join()), its clock
+    // ("5+3" from 300+3), its name and its rated refusal: the panel switches with liveMode and the choice.
+    $ratingsByPool = collect([false, true])->mapWithKeys(fn (bool $isRated): array => [($isRated ? 'rated' : 'casual') => collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => Ratings::forUser($user?->id, $slug, $mode, Ratings::pool($isRated))['rating']])->all()])->all();
+    $ratings = $ratingsByPool['casual'];
     $clock = function (string $mode) use ($slug): string {
         $control = (string) app(GameRegistry::class)->mode($slug, $mode)?->timeControl;
 
@@ -36,11 +44,17 @@
     $modeNames = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => \App\Support\GameNames::mode($slug, $mode)])->all();
     $firstLive = $liveModes[0] ?? 'blitz';
     $rating = $ratings[$entry?->mode ?? $firstLive] ?? Ratings::forUser($user?->id, $slug, $firstLive, \App\Models\Rating::CASUAL)['rating'];
-    // The rated queue off: rated is closed for everyone, with the reason RatedBoard gives for it.
-    $closed = __('Rated :game is not open yet. Games are casual for now.', ['game' => $name]);
-    $refusals = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => $this->ratedOffered ? ($this->ratedRefusals[$mode] ?? null) : $closed])->all();
-    $ratedRefusal = $hasLive ? $refusals[$firstLive] : ($this->ratedOffered ? $this->ratedRefusal : $closed);
-    $badges = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => Ladders::isOpen($slug, $mode) ? __('not open yet') : __('from Block 0')])->all();
+    // Why rated is closed per mode, with its kind (the board lobby's ratedReasons): the badge names the kind, never the
+    // ladder state alone (the badge read "not open yet" exactly while the ladder was open, before plan P3).
+    $reasons = $this->ratedReasons;
+    $refusals = collect($reasons)->map(fn (?array $reason): ?string => $reason['message'] ?? null)->all();
+    $ratedRefusal = $hasLive ? $refusals[$firstLive] : $this->ratedRefusal;
+    $defaultReason = $reasons[$firstLive] ?? null;
+    $anyRefused = array_filter($refusals) !== [];
+    // The live season per mode (its ladder open and the rated queue offered) and what a rated win mines there now.
+    $seasonName = ($liveSeason = Ladders::season()) === null ? __('Season') : \App\Support\Badges\BadgeCopy::season($liveSeason);
+    $seasonModes = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => $this->ratedOffered && Ladders::isOpen($slug, $mode)])->all();
+    $chips = collect(\App\Support\Board\RatedBoard::rewardsNow($slug, $liveModes))->map(fn (int $sats): string => __('A win mines :sats sats', ['sats' => \App\Support\Formats::number($sats)]))->all();
     $byMode = $this->searchingByMode;
     $searching = $this->searching;
     $correspondence = $this->correspondence;
@@ -63,7 +77,7 @@
 @endphp
 
 <section aria-labelledby="play-h" class="flex flex-col gap-2 lg:gap-3" data-test="play"
-         x-data="{ stage: @js($busy && $hasLive ? 'quick' : null), help: false, rated: false, refusals: @js((object) $refusals) }"
+         x-data="{ stage: @js($busy && $hasLive ? 'quick' : null), help: false, rated: false, refusals: @js((object) $refusals), reasons: @js((object) $reasons), chips: @js((object) $chips), ratings: @js($ratingsByPool) }"
          x-init="if (stage === null && @js($liveModes).includes(location.hash.slice(1))) { liveMode = location.hash.slice(1); stage = 'quick' } $watch('stage', (open) => open && $nextTick(() => requestAnimationFrame(() => document.getElementById('lobby-' + open)?.scrollIntoView({ block: 'nearest', behavior: 'instant' }))))"
          x-effect="if (refusals[liveMode] !== null && refusals[liveMode] !== undefined) rated = false">
     {{-- "Spielarten" (template T1, GameLobby.dc.html "Brettspiel-Lobby"): one row per way to play, as in chess. --}}
@@ -82,6 +96,8 @@
                             @else
                                 <span class="rv-live h-5 font-normal"><i></i><b data-test="play-{{ $liveMode }}-searching">{{ $byMode[$liveMode] ?? 0 }}</b> {{ __('searching') }}</span>
                             @endif
+                            {{-- Whether this mode plays Season 1 at all (plan P3; Casual always): the choice itself is under the list. --}}
+                            <span @class(['rv-tag ms-1 whitespace-nowrap', 'is-btc' => $seasonModes[$liveMode]]) data-test="play-{{ $liveMode }}-kinds">{{ $seasonModes[$liveMode] ? $seasonName : __('Casual only') }}</span>
                         </x-slot:meta>
                     </x-chess.lobby-tile>
                 </li>
@@ -157,6 +173,47 @@
         </ul>
     </div>
 
+    @if ($hasLive && ! $busy)
+        {{--
+            Season 1 or Casual, before any click (plan "Season vs. Casual", P3): the choice "Find opponent" sends, for the
+            mode the panel plays (Alpine liveMode, the first mode until a row is opened). The rated option carries what a
+            win mines now, or the badge of why it is closed; the line under it what to do about that.
+        --}}
+        <div class="flex flex-col gap-2 rounded-[4px] bg-card p-2 shadow-ring lg:p-3" data-test="kind-choice" data-mode="{{ $firstLive }}" x-bind:data-mode="liveMode">
+            <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid min-w-0 grid-cols-2 gap-1 rounded-md bg-ground p-1 shadow-ring" data-test="game-kind" data-rated-open="{{ $ratedRefusal === null ? 'true' : 'false' }}" x-bind:data-rated-open="(refusals[liveMode] === null).toString()">
+                <button type="button" role="radio" aria-checked="true" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="rated = false" aria-describedby="kind-reason kind-why" data-test="kind-casual"
+                        class="flex min-h-14 min-w-0 cursor-pointer flex-col items-center justify-center rounded-sm bg-raised px-2 py-1.5 text-center text-btc-hi shadow-[inset_0_-2px_0_var(--color-btc)]"
+                        x-bind:class="rated ? 'bg-transparent! shadow-none! text-ink!' : ''">
+                    <b class="text-[13px]">{{ __('Casual') }}</b>
+                    <span class="text-[11px] leading-4 font-normal text-ink-2">{{ __('For fun, own Elo') }}</span>
+                </button>
+                <button type="button" role="radio" aria-checked="false" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="rated = true" aria-describedby="kind-reason kind-why" data-test="kind-rated"
+                        @disabled($ratedRefusal !== null) x-bind:disabled="refusals[liveMode] !== null"
+                        class="flex min-h-14 min-w-0 cursor-pointer flex-col items-center justify-center rounded-sm px-2 py-1.5 text-center text-ink disabled:cursor-not-allowed disabled:text-ink-3"
+                        x-bind:class="rated ? 'bg-raised text-btc-hi! shadow-[inset_0_-2px_0_var(--color-btc)]' : ''">
+                    <b class="text-[13px]">{{ __(':season (rated)', ['season' => $seasonName]) }}</b>
+                    <span @class(['text-[11px] leading-4 font-normal text-ink-2', 'hidden' => $ratedRefusal !== null]) x-bind:class="refusals[liveMode] !== null && 'hidden'" x-text="chips[liveMode] ?? @js(__('Ladder and a block'))" data-test="kind-rated-gain">{{ $chips[$firstLive] ?? __('Ladder and a block') }}</span>
+                    <span @class(['rounded-xs bg-raised px-1.5 py-0.5 text-[11px] font-normal text-ink-2', 'hidden' => $ratedRefusal === null]) x-bind:class="refusals[liveMode] === null && 'hidden'"
+                          x-text="reasons[liveMode]?.badge" x-bind:data-kind="reasons[liveMode]?.kind" data-kind="{{ $defaultReason['kind'] ?? '' }}" data-test="kind-rated-badge">{{ $defaultReason['badge'] ?? '' }}</span>
+                </button>
+            </div>
+            <div class="flex flex-col gap-1.5 px-1" data-test="kind-note">
+                <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-2" data-test="kind-chip" x-bind:data-kind="rated ? 'rated' : 'casual'" data-kind="casual">
+                    <span x-show="rated" x-cloak>{{ __('Counts for the ladder and mines a block, paid out after the season review.') }}</span>
+                    <span x-show="! rated">{{ __('Casual mines no block') }}</span>
+                </span>
+                @if ($anyRefused)
+                    <p id="kind-reason" class="m-0 flex max-w-[68ch] flex-wrap items-center gap-x-2 text-[13px] leading-normal text-ink-2" data-test="kind-reason"
+                       x-show="reasons[liveMode] !== null" @if ($defaultReason === null) x-cloak @endif x-bind:data-kind="reasons[liveMode]?.kind" data-kind="{{ $defaultReason['kind'] ?? '' }}">
+                        <span x-text="reasons[liveMode]?.line">{{ $defaultReason['line'] ?? '' }}</span>
+                        <a class="rv-lk inline-flex min-h-6 items-center font-bold whitespace-nowrap" x-show="reasons[liveMode]?.href" x-bind:href="reasons[liveMode]?.href" x-text="reasons[liveMode]?.cta"
+                           @if (($defaultReason['href'] ?? null) === null) x-cloak @else href="{{ $defaultReason['href'] }}" @endif data-test="kind-reason-link">{{ $defaultReason['cta'] ?? '' }}</a>
+                    </p>
+                @endif
+            </div>
+        </div>
+    @endif
+
     @if ($entry)
         {{-- Finding an opponent: the chess lobby's card, with this board game's queue. --}}
         @php($queueRange = app(BoardQueue::class)->range($entry))
@@ -205,20 +262,7 @@
         <div id="lobby-quick" role="region" aria-label="{{ $modeNames[$firstLive] }}" x-bind:aria-label="@js($modeNames)[liveMode]" x-bind:data-mode="liveMode" data-mode="{{ $firstLive }}" x-show="stage === 'quick'" x-cloak
              x-transition:enter="transition duration-200 ease-out motion-reduce:transition-none" x-transition:enter-start="opacity-0 -translate-y-1"
              class="flex flex-col gap-2 rounded-[4px] bg-card p-2 shadow-ring-btc lg:flex-row lg:flex-wrap lg:items-center lg:gap-3 lg:p-3" data-test="find-opponent">
-            <div class="flex gap-2 lg:contents">
-                <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid min-w-0 grow grid-cols-2 gap-1 rounded-md bg-ground p-1 shadow-ring lg:w-80 lg:grow-0" data-test="game-kind" data-rated-open="{{ $ratedRefusal === null ? 'true' : 'false' }}" x-bind:data-rated-open="(refusals[liveMode] === null).toString()">
-                    <button type="button" role="radio" aria-checked="true" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="rated = false" aria-describedby="kind-why" data-test="kind-casual"
-                            class="flex min-h-11 cursor-pointer items-center justify-center rounded-sm px-2 text-[13px] font-bold text-btc-hi shadow-[inset_0_-2px_0_var(--color-btc)] bg-raised"
-                            x-bind:class="rated ? 'bg-transparent! shadow-none! text-ink!' : ''">{{ __('Casual') }}</button>
-                    <button type="button" role="radio" aria-checked="false" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="rated = true" aria-describedby="kind-why" data-test="kind-rated"
-                            @disabled($ratedRefusal !== null) x-bind:disabled="refusals[liveMode] !== null"
-                            class="flex min-h-11 cursor-pointer flex-wrap items-center justify-center gap-x-2 rounded-sm px-2 text-[13px] font-bold text-ink disabled:cursor-not-allowed disabled:text-ink-3"
-                            x-bind:class="rated ? 'bg-raised text-btc-hi! shadow-[inset_0_-2px_0_var(--color-btc)]' : ''">
-                        {{ __('Rated') }}
-                        <span @class(['rounded-xs bg-raised px-1.5 py-0.5 text-[11px] font-normal text-ink-2', 'hidden' => $ratedRefusal === null]) x-bind:class="refusals[liveMode] === null ? 'hidden' : ''"
-                              x-text="@js($badges)[liveMode]" data-test="kind-rated-badge">{{ $badges[$firstLive] ?? '' }}</span>
-                    </button>
-                </div>
+            <div class="flex justify-end gap-2 lg:contents">
                 <button type="button" x-on:click="help = ! help" x-bind:aria-expanded="help.toString()" aria-expanded="false" aria-controls="blitz-help" data-test="kind-help"
                         class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center self-center rounded-md border border-line bg-well font-display text-base font-bold text-ink-2 hover:text-ink aria-expanded:border-btc aria-expanded:text-btc-hi lg:order-last">
                     <span aria-hidden="true">?</span><span class="sr-only">{{ __('How quick play works') }}</span>
@@ -228,7 +272,7 @@
                 <span class="flex min-h-12 shrink-0 flex-col justify-center rounded-md px-3 shadow-ring lg:min-h-11" data-test="blitz-range">
                     <span class="sr-only">{{ __('Opponent strength') }}:</span>
                     <b class="text-[15px] leading-5">±{{ $range['initial'] }}</b>
-                    <span class="text-[11px] leading-4 text-ink-2" x-text="@js(collect($ratings)->map(fn (int $value): string => __('around :rating', ['rating' => $value]))->all())[liveMode]">{{ __('around :rating', ['rating' => $rating]) }}</span>
+                    <span class="text-[11px] leading-4 text-ink-2" x-text="@js(__('around :rating', ['rating' => '__R__'])).replace('__R__', ratings[rated ? 'rated' : 'casual'][liveMode])" data-test="blitz-range-rating">{{ __('around :rating', ['rating' => $rating]) }}</span>
                 </span>
                 @auth
                     <button type="button" x-on:click="$wire.findOpponent(rated, liveMode)" data-test="find-opponent-button"
@@ -246,6 +290,13 @@
             </div>
         </div>
     @endif
+
+    {{-- "Your path to Season 1" (plan P4): the steps still missing, each with its fix; one line once rated is open. --}}
+    @auth
+        @if ($hasLive || $hasCorrespondence)
+            <x-season.path :game="$slug" :mode="$hasLive ? $firstLive : BoardGame::CORRESPONDENCE" />
+        @endif
+    @endauth
 
     @if ($hasTeamMatch)
         <a href="{{ $teamHref }}" class="flex min-h-11 items-center gap-2 rounded-[4px] border border-line px-3 text-[13px] text-ink hover:text-ink lg:hidden" data-test="play-team-link">
