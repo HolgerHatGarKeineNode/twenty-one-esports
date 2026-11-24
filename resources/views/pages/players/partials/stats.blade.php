@@ -30,6 +30,7 @@
         {{-- Ladders: rating, rank, form, share of wins, peak --}}
         <section aria-labelledby="ps-ladders-h" class="flex flex-col gap-3 lg:gap-4" data-test="player-ladders">
             <h2 id="ps-ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Ladders') }}</h2>
+            @include('partials.season-casual-legend')
             @if ($games === [])
                 <div class="flex flex-col items-start gap-3 rounded-lg px-4 py-4 shadow-ring-hairline lg:px-5" data-test="player-ladders-empty">
                     <p class="{{ $empty }}">{{ $isMe ? __('No results yet. Your first finished game puts you on a ladder.') : __('No results yet. The first finished game puts :name on a ladder.', ['name' => $name]) }}</p>
@@ -65,7 +66,7 @@
                                 <x-game-cover :game="$ladder['game']" size="thumb" class="w-12 rounded-tag" />
                                 <span class="flex min-w-0 flex-col">
                                     <b class="truncate text-[13px]">{{ $ladder['name'] }}</b>
-                                    <span class="truncate text-xs text-ink-3">{{ $ladder['lineup'] !== null ? $ladder['lineup']->clan->name.', ' : '' }}{{ $rated ? __('Rated') : __('Casual') }}</span>
+                                    <span class="truncate text-xs text-ink-3">{{ $ladder['lineup'] !== null ? $ladder['lineup']->clan->name.', ' : '' }}<span data-test="player-ladder-pool">{{ Ratings::label($rating['pool']) }}</span></span>
                                 </span>
                             </a>
 
@@ -182,7 +183,7 @@
             @endif
         </section>
 
-        {{-- Season record: every released season, then Season 0 (casual) --}}
+        {{-- Season record: every released season, then Casual (no season) --}}
         <section aria-labelledby="ps-seasons-h" class="{{ $side }}" data-test="player-seasons">
             <h2 id="ps-seasons-h" class="{{ $sideHead }}">{{ __('Season record') }}</h2>
             @if ($seasons->sum('results') === 0)
@@ -193,7 +194,7 @@
                         <li wire:key="season-{{ $season['key'] }}" class="flex min-h-11 items-center justify-between gap-3 border-t border-hairline text-[13px]" data-test="player-season" data-season="{{ $season['key'] }}">
                             <span class="flex min-w-0 flex-col">
                                 <b class="truncate">{{ $season['name'] }}</b>
-                                <span class="text-xs text-ink-3">{{ $season['casual'] ? __('Casual') : __('Rated') }}</span>
+                                <span class="text-xs text-ink-3">{{ $season['casual'] ? __('For fun, own Elo') : __('Rated') }}</span>
                             </span>
                             <span class="text-right text-xs text-ink-2 tabular-nums" data-test="player-season-record">
                                 @if ($season['results'] === 0)

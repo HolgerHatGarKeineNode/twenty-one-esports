@@ -112,14 +112,72 @@ final class Ratings
     }
 
     /**
-     * The ladder a player's headline rating comes from: the rated ladder once
-     * it is open, the casual one before Block 0.
+     * A player's headline rating, where only one number fits (chips, share
+     * cards, stream slides): the Season rating once it has a result, else
+     * the casual one (plan "Season vs. Casual", P1). The `pool` key says
+     * which, so the view labels it (label()).
      *
      * @return array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}
      */
     public static function headline(?int $userId, string $game, string $mode): array
     {
-        return self::forUser($userId, $game, $mode, self::pool(Ladders::isOpen($game, $mode)));
+        return self::pair($userId, $game, $mode)['shown'];
+    }
+
+    /**
+     * Both ratings of a player in a game and mode (plan "Season vs. Casual",
+     * P1: show both, label both): `season` from the open Season ladder (null
+     * while that ladder is closed), `casual` always, and `shown`, the one a
+     * single number shows: the Season rating once it has a result, else the
+     * casual one. Arrays only, so a cached card can hold it
+     * (cache.serializable_classes = false). One query.
+     *
+     * @return array{season: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}|null, casual: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}, shown: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}}
+     */
+    public static function pair(?int $userId, string $game, string $mode): array
+    {
+        return self::pairOf('user', $userId, $game, $mode);
+    }
+
+    /**
+     * The shown rating (pair()['shown']) of many players at once, for a list:
+     * each player's Season rating once it has a result, else their casual
+     * one. Two queries, whatever the list's length.
+     *
+     * @param  iterable<int|null>  $userIds
+     * @return array<int, array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}>
+     */
+    public static function shownForUsers(iterable $userIds, string $game, string $mode): array
+    {
+        $casual = self::forUsers($userIds, $game, $mode, Rating::CASUAL);
+        $rated = self::season(Rating::RATED, $game, $mode) === null ? [] : self::forUsers(array_keys($casual), $game, $mode, Rating::RATED);
+
+        return array_map(fn (int $id): array => ($rated[$id]['results'] ?? 0) > 0 ? $rated[$id] : $casual[$id], array_combine(array_keys($casual), array_keys($casual)));
+    }
+
+    /**
+     * pair() for a lineup on a lineup ladder.
+     *
+     * @return array{season: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}|null, casual: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}, shown: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}}
+     */
+    public static function pairForLineup(?int $lineupId, string $game, string $mode): array
+    {
+        return self::pairOf('lineup', $lineupId, $game, $mode);
+    }
+
+    /**
+     * The label of a pool on screen: the live Season's name ("Season 1")
+     * for the rated pool, "Casual" for the casual one.
+     */
+    public static function label(string $pool): string
+    {
+        if ($pool === Rating::CASUAL) {
+            return __('Casual');
+        }
+
+        $season = Ladders::season();
+
+        return $season === null ? __('Rated') : BadgeCopy::season($season);
     }
 
     /**
@@ -127,8 +185,8 @@ final class Ratings
      * chess in the default mode (rapid) always and every other chess mode the
      * player has a result in (plan "Schach Rapid und Clan", P3: one chip per
      * rated chess mode, from the registry), plus each Rocket League lineup
-     * the player has a seat in, every one from its headline ladder (casual
-     * before Block 0).
+     * the player has a seat in, every one from its headline ladder (the
+     * Season once it has a result, else casual; the chip labels its pool).
      *
      * @return list<array{label: string, rating: array<string, mixed>, mode?: string}>
      */
@@ -139,15 +197,17 @@ final class Ratings
         $ladders = [];
 
         foreach (ChessModes::all() as $mode) {
-            $pool = self::pool(Ladders::isOpen('chess', $mode));
-            $ladders[$mode] = [$pool, self::season($pool, 'chess', $mode)];
+            $ladders[$mode] = self::season(Rating::RATED, 'chess', $mode);
         }
 
         $rows = Rating::query()->where(['game' => 'chess', 'subject' => 'user:'.$user->id])->whereIn('mode', array_keys($ladders))->get();
 
-        foreach ($ladders as $mode => [$pool, $season]) {
-            $row = $season === null ? null : $rows->first(fn (Rating $rating): bool => $rating->mode === $mode && $rating->pool === $pool && $rating->season === $season);
-            $rating = self::summary($row, $pool);
+        foreach ($ladders as $mode => $season) {
+            // The Season rating once it has a result, else the casual one (headline()).
+            $rated = $season === null ? null : $rows->first(fn (Rating $rating): bool => $rating->mode === $mode && $rating->pool === Rating::RATED && $rating->season === $season);
+            $rating = $rated !== null && $rated->results > 0
+                ? self::summary($rated, Rating::RATED)
+                : self::summary($rows->first(fn (Rating $rating): bool => $rating->mode === $mode && $rating->pool === Rating::CASUAL && $rating->season === ''), Rating::CASUAL);
 
             if ($mode === ChessModes::DEFAULT || $rating['results'] > 0) {
                 $chips[] = ['label' => BadgeCopy::ladder('chess', $mode), 'rating' => $rating, 'mode' => $mode];
@@ -163,20 +223,19 @@ final class Ratings
         foreach ($seats as $seat) {
             $game = $seat->lineup->game;
             $mode = $seat->lineup->mode;
-            $pool = self::pool(Ladders::isOpen($game, $mode));
             $label = (app(GameRegistry::class)->find($game)?->assets()->shortLabel ?? $game).' '.$mode;
 
             // A player ladder (RL and FC 1v1, NIP rev. 7.1) rates the player: one chip, whatever lineups they sit in.
             if ($seat->lineup->gameMode()->rates === 'player') {
                 if (! isset($players["{$game}/{$mode}"])) {
                     $players["{$game}/{$mode}"] = true;
-                    $chips[] = ['label' => $label, 'rating' => self::forUser($user->id, $game, $mode, $pool)];
+                    $chips[] = ['label' => $label, 'rating' => self::headline($user->id, $game, $mode)];
                 }
 
                 continue;
             }
 
-            $chips[] = ['label' => $label, 'rating' => self::forLineups([$seat->lineup_id], $game, $mode, $pool)[$seat->lineup_id]];
+            $chips[] = ['label' => $label, 'rating' => self::pairForLineup($seat->lineup_id, $game, $mode)['shown']];
         }
 
         return $chips;
@@ -281,6 +340,30 @@ final class Ratings
         $changes = RatingChange::query()->with('rating:id,subject')->where('source', $source)->where('source_id', $sourceId)->get();
 
         return $changes->mapWithKeys(fn (RatingChange $change) => [$change->rating->subject => $change])->all();
+    }
+
+    /**
+     * @param  'user'|'lineup'  $kind
+     * @return array{season: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}|null, casual: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}, shown: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}}
+     */
+    private static function pairOf(string $kind, ?int $id, string $game, string $mode): array
+    {
+        $season = self::season(Rating::RATED, $game, $mode);
+        $rows = $id === null ? collect() : Rating::query()
+            ->where(['game' => $game, 'mode' => $mode, 'subject' => $kind.':'.$id])
+            ->where(fn ($query) => $query->where(['pool' => Rating::CASUAL, 'season' => ''])
+                ->when($season !== null, fn ($query) => $query->orWhere(fn ($rated) => $rated->where(['pool' => Rating::RATED, 'season' => $season]))))
+            ->get()
+            ->keyBy('pool');
+
+        $rated = $season === null ? null : self::summary($rows->get(Rating::RATED), Rating::RATED);
+        $casual = self::summary($rows->get(Rating::CASUAL), Rating::CASUAL);
+
+        return [
+            'season' => $rated,
+            'casual' => $casual,
+            'shown' => $rated !== null && $rated['results'] > 0 ? $rated : $casual,
+        ];
     }
 
     /**

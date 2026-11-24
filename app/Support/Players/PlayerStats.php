@@ -25,7 +25,6 @@ use App\Support\Hyper\HyperCups;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Pong\PongLadder;
 use App\Support\Rating\Ratings;
-use App\Support\Series\Ladders;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -40,9 +39,9 @@ use Illuminate\Support\Collection;
  * wallet balance), a clan is its public name. Nothing about looking-to-play,
  * the Lightning address or casual chat is read here.
  *
- * A ladder shows the pool that counts now: the season ladder once it is
- * open, the casual one before Block 0 (Ratings::pool()). Only ladders with a
- * result in that pool are listed. Form and peak come from the rating's own
+ * Every ladder with a result is listed, in both pools (plan "Season vs.
+ * Casual", P1): the casual ladders always, the Season ladders while they are
+ * open; the card names its pool. Form and peak come from the rating's own
  * changes, one query for all ladders each.
  *
  * @phpstan-type Summary array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}
@@ -82,11 +81,14 @@ final class PlayerStats
     {
         $registry = app(GameRegistry::class);
         $games = array_keys($registry->all());
-        $open = [];
-        $rows = $this->ratings()->filter(function (Rating $row) use (&$open): bool {
-            $open[$row->game.'/'.$row->mode] ??= Ladders::isOpen($row->game, $row->mode);
+        $seasons = [];
+        // Both pools (plan "Season vs. Casual", P1): every casual ladder, and the open Season ladders, each labelled.
+        $rows = $this->ratings()->filter(function (Rating $row) use (&$seasons): bool {
+            $seasons[$row->game.'/'.$row->mode] ??= Ratings::season(Rating::RATED, $row->game, $row->mode);
 
-            return $row->results > 0 && $row->pool === Ratings::pool($open[$row->game.'/'.$row->mode]);
+            return $row->results > 0 && ($row->pool === Rating::CASUAL
+                ? $row->season === ''
+                : $row->season === $seasons[$row->game.'/'.$row->mode]);
         })->values();
 
         if ($rows->isEmpty()) {
@@ -104,7 +106,7 @@ final class PlayerStats
             $summary = Ratings::summary($row, $row->pool);
 
             return [
-                'key' => $row->game.'-'.$row->mode.'-'.$row->subject,
+                'key' => $row->game.'-'.$row->mode.'-'.$row->subject.'-'.$row->pool,
                 'game' => $row->game,
                 'mode' => $row->mode,
                 'name' => GameNames::full($row->game, $row->mode),
@@ -122,6 +124,7 @@ final class PlayerStats
             array_search($ladder['game'], $games, true),
             array_search($ladder['mode'], array_keys($registry->find($ladder['game'])?->modes() ?? []), true),
             $ladder['lineup'] !== null,
+            $ladder['rating']['pool'] !== Rating::RATED,
         ])->all());
     }
 
@@ -250,7 +253,7 @@ final class PlayerStats
 
     /**
      * Results per season: every released season's rated ladders, newest
-     * first, then Season 0, the casual ladders that run with no season.
+     * first, then Casual, the casual ladders that run with no season.
      *
      * @return list<SeasonRow>
      */
@@ -275,7 +278,7 @@ final class PlayerStats
             $seasons[] = $row('rated-'.$slug, BadgeCopy::season($slug), false, $totals->get(Rating::RATED.'|'.$slug));
         }
 
-        $seasons[] = $row('casual', __('Season 0'), true, $totals->get(Rating::CASUAL.'|'));
+        $seasons[] = $row('casual', __('Casual'), true, $totals->get(Rating::CASUAL.'|'));
 
         return $seasons;
     }

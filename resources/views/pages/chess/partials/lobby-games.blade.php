@@ -6,7 +6,6 @@
 @php
     use App\Support\Rating\Ratings;
 
-    $dailyPool = Ratings::headline(null, 'chess', 'correspondence')['pool'];
     $dailyGames = $this->dailyGames;
     $challenges = $this->dailyChallenges;
     $nowMs = (int) now()->getTimestampMs();
@@ -68,7 +67,7 @@
                     <a href="{{ route('games.show', $daily) }}" class="flex min-h-14 items-center gap-3 border-b border-hairline py-2 text-ink hover:text-ink" data-test="lobby-daily-game" data-mine="{{ $mine ? 'true' : 'false' }}">
                         <x-avatar :user="$opp" :size="28" class="rounded-sm" />
                         <span class="flex min-w-0 grow flex-col gap-0.5">
-                            <span class="flex min-w-0 items-baseline gap-2 text-[13px]"><b class="truncate">{{ $opp?->displayName() }}</b><span class="shrink-0 text-xs text-ink-2" data-test="daily-opponent-elo">{{ Ratings::forUser($opp?->id, 'chess', 'correspondence', $dailyPool)['rating'] }}</span></span>
+                            <span class="flex min-w-0 items-baseline gap-2 text-[13px]"><b class="truncate">{{ $opp?->displayName() }}</b><span class="shrink-0 text-xs text-ink-2" data-test="daily-opponent-elo">{{ Ratings::headline($opp?->id, 'chess', 'correspondence')['rating'] }}</span></span>
                             <span class="text-xs text-ink-2">{{ $mine ? __(':h h :m min left', ['h' => intdiv($left, 60), 'm' => str_pad((string) ($left % 60), 2, '0', STR_PAD_LEFT)]) : __('move :n', ['n' => intdiv($daily->ply, 2) + 1]) }}</span>
                         </span>
                         @if ($mine)

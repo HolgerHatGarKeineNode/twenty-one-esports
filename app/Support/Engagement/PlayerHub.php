@@ -28,7 +28,6 @@ use App\Support\GameNames;
 use App\Support\Rating\Ratings;
 use App\Support\Series\CasualLobby;
 use App\Support\Series\CasualMatches;
-use App\Support\Series\Ladders;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\TournamentLanding;
@@ -198,9 +197,10 @@ final class PlayerHub
     }
 
     /**
-     * Where this player stands in every game and mode they have results in:
-     * the season ladder once it is open, the casual one before Block 0
-     * (Ratings::headline()); a lineup ladder for each lineup they sit in.
+     * Where this player stands in every game and mode they have results in,
+     * in both pools (plan "Season vs. Casual", P1): the Season ladder with a
+     * result first, then the casual one (Ratings::pair()); a lineup ladder
+     * for each lineup they sit in.
      *
      * @return list<Standing>
      */
@@ -216,10 +216,12 @@ final class PlayerHub
                     continue;
                 }
 
-                $rating = Ratings::headline($this->user->id, $game->slug(), $mode->slug);
+                $pair = Ratings::pair($this->user->id, $game->slug(), $mode->slug);
 
-                if ($rating['results'] > 0) {
-                    $standings[] = $this->standing($game->slug(), $mode->slug, null, $rating);
+                foreach ([$pair['season'], $pair['casual']] as $rating) {
+                    if ($rating !== null && $rating['results'] > 0) {
+                        $standings[] = $this->standing($game->slug(), $mode->slug, null, $rating);
+                    }
                 }
             }
         }
@@ -229,11 +231,12 @@ final class PlayerHub
             ->filter(fn (Lineup $lineup): bool => $registry->mode($lineup->game, $lineup->mode)?->rates === 'lineup');
 
         foreach ($lineups as $lineup) {
-            $pool = Ratings::pool(Ladders::isOpen($lineup->game, $lineup->mode));
-            $rating = Ratings::forLineups([$lineup->id], $lineup->game, $lineup->mode, $pool)[$lineup->id] ?? Ratings::summary(null, $pool);
+            $pair = Ratings::pairForLineup($lineup->id, $lineup->game, $lineup->mode);
 
-            if ($rating['results'] > 0) {
-                $standings[] = $this->standing($lineup->game, $lineup->mode, $lineup, $rating);
+            foreach ([$pair['season'], $pair['casual']] as $rating) {
+                if ($rating !== null && $rating['results'] > 0) {
+                    $standings[] = $this->standing($lineup->game, $lineup->mode, $lineup, $rating);
+                }
             }
         }
 

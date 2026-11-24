@@ -146,7 +146,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
 @php
     $me = auth()->user();
     $opponent = $this->opponent;
-    $ratings = \App\Support\Rating\Ratings::forUsers([$opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']);
+    $ratings = \App\Support\Rating\Ratings::shownForUsers([$opponent?->id], 'chess', 'correspondence');
     $hours = (int) config('esports.chess.challenge_hours');
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
 @endphp
@@ -165,7 +165,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 @island(name: 'players', always: true)
                 @php($me = auth()->user())
                 @php($opponent = $this->opponent)
-                @php($ratings = \App\Support\Rating\Ratings::forUsers([...$this->players->pluck('id')->all(), $opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']))
+                @php($ratings = \App\Support\Rating\Ratings::shownForUsers([...$this->players->pluck('id')->all(), $opponent?->id], 'chess', 'correspondence'))
                 <label for="player-search" class="sr-only">{{ __('Search players') }}</label>
                 <input id="player-search" type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('Search players') }}" autocomplete="off" data-test="player-search"
                        class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3 lg:max-w-[360px]">

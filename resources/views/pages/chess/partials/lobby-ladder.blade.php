@@ -21,8 +21,12 @@
 <section aria-labelledby="ladder-card-h" class="flex flex-col gap-3" data-test="lobby-ladder" data-pool="{{ $top['pool'] }}" data-mode="{{ $ladderMode }}">
     <div class="gp-head">
         <h2 id="ladder-card-h" class="gp-h">{{ $ladderName === null ? __('Blitz ladder') : __(':mode ladder', ['mode' => $ladderName]) }}</h2>
+        {{-- Which ladder this is (plan "Season vs. Casual", P1): the Season once it has a result, else casual. --}}
+        <span @class(['rv-tag', 'is-btc' => $rated]) data-test="lobby-ladder-pool">{{ \App\Support\Rating\Ratings::label($top['pool']) }}</span>
         <a href="{{ route('ladder.show', [$ladderGame, $ladderMode]) }}" @navigate(route('ladder.show', [$ladderGame, $ladderMode])) class="rv-lk inline-flex min-h-11 items-center lg:min-h-6" data-test="lobby-ladder-link">{{ __('Full ladder') }}</a>
     </div>
+
+    @include('partials.season-casual-legend')
 
     <div class="gp-panel flex flex-col gap-2 p-2">
         @if (count($ladderModes) > 1)

@@ -642,10 +642,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
             return [];
         }
 
-        $pool = Ratings::headline(null, $this->slug, BoardGame::CORRESPONDENCE)['pool'];
         $ids = $games->map(fn (BoardGame $game): ?int => $game->opponentOf($user)?->id)->filter()->unique()->values()->all();
 
-        return array_map(fn (array $rating): int => $rating['rating'], Ratings::forUsers($ids, $this->slug, BoardGame::CORRESPONDENCE, $pool));
+        return array_map(fn (array $rating): int => $rating['rating'], Ratings::shownForUsers($ids, $this->slug, BoardGame::CORRESPONDENCE));
     }
 
     /**

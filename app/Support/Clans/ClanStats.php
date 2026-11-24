@@ -170,13 +170,14 @@ final class ClanStats
     }
 
     /**
-     * A lineup's Elo on its headline ladder: rated once open, casual before.
+     * A lineup's Elo on its headline ladder: the Season once it has a
+     * result there, else casual (Ratings::pairForLineup()); `pool` says which.
      *
-     * @return array{elo: int, series: int, rank: int, of: int, tier: string, level: int}
+     * @return array{elo: int, series: int, rank: int, of: int, tier: string, level: int, pool: string}
      */
     public function lineup(Lineup $lineup): array
     {
-        $pool = Ratings::pool(Ladders::isOpen($lineup->game, $lineup->mode));
+        $pool = Ratings::pairForLineup($lineup->id, $lineup->game, $lineup->mode)['shown']['pool'];
         $season = Ratings::season($pool, $lineup->game, $lineup->mode) ?? '';
         $ladder = Rating::query()->where(['pool' => $pool, 'season' => $season, 'game' => $lineup->game, 'mode' => $lineup->mode]);
         $row = (clone $ladder)->where('subject', 'lineup:'.$lineup->id)->first();
@@ -190,6 +191,7 @@ final class ClanStats
             'of' => (clone $ladder)->count(),
             'tier' => $badge['tier'],
             'level' => $badge['level'],
+            'pool' => $pool,
         ];
     }
 
@@ -303,7 +305,7 @@ final class ClanStats
      */
     private function eloLine(Lineup $lead): array
     {
-        $pool = Ratings::pool(Ladders::isOpen($lead->game, $lead->mode));
+        $pool = Ratings::pairForLineup($lead->id, $lead->game, $lead->mode)['shown']['pool'];
         // In the order the results happened: a corrected result (RatingService::correct()) keeps its time
         // but gets a newer id. The line adds the deltas up to the rating now; a corrected change's
         // before/after were recorded at the correction and do not chain with its neighbours.

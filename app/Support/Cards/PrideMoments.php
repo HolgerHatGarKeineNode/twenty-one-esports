@@ -3,6 +3,7 @@
 namespace App\Support\Cards;
 
 use App\Enums\TournamentStatus;
+use App\Models\Rating;
 use App\Models\Season;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -12,7 +13,6 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\Players\PlayerStats;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Seasons;
-use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentTv;
 
@@ -206,25 +206,27 @@ final class PrideMoments
 
     /**
      * The tale of the tape: both finalists side by side. Per side the seed,
-     * the rating and the record in the tournament's ladder (the pool that
-     * counts now), the matches won in this tournament and the tournaments
+     * the rating and the record in the tournament's ladder (the Season once
+     * a finalist has a result there, else casual; `pool` says which), the matches won in this tournament and the tournaments
      * won before (a player entry; a team has none of its own).
      *
-     * @return array{tournament: string, tournament_id: int, match: int, ladder: string, best_of: int|null, sides: list<array{id: int, name: string, pubkey: string, avatar_path: string|null, user_id: int|null, seed: int|null, rating: int, wins: int, draws: int, losses: int, results: int, path: int, titles: int|null}>}
+     * @return array{tournament: string, tournament_id: int, match: int, ladder: string, pool: string, best_of: int|null, sides: list<array{id: int, name: string, pubkey: string, avatar_path: string|null, user_id: int|null, seed: int|null, rating: int, wins: int, draws: int, losses: int, results: int, path: int, titles: int|null}>}
      */
     public static function tape(Tournament $tournament, TournamentMatch $final): array
     {
         $final->loadMissing('slots.participant.user');
-        $pool = Ratings::pool(Ladders::isOpen($tournament->game, $tournament->mode));
+        // Both sides from one pool (plan "Season vs. Casual", P1): the Season once a finalist has a result there, else casual.
+        $pairs = $final->slots->map(fn ($slot): array => $slot->participant->lineup_id !== null
+            ? Ratings::pairForLineup($slot->participant->lineup_id, $tournament->game, $tournament->mode)
+            : Ratings::pair($slot->participant->user_id, $tournament->game, $tournament->mode));
+        $pool = $pairs->contains(fn (array $pair): bool => ($pair['season']['results'] ?? 0) > 0) ? Rating::RATED : Rating::CASUAL;
         $done = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'done')->where('id', '!=', $final->id)->with('slots')->get();
         $sides = [];
 
-        foreach ($final->slots->sortBy('slot')->values() as $slot) {
+        foreach ($final->slots->sortBy('slot') as $key => $slot) {
             /** @var TournamentParticipant $entry */
             $entry = $slot->participant;
-            $rating = $entry->lineup_id !== null
-                ? Ratings::forLineups([$entry->lineup_id], $tournament->game, $tournament->mode, $pool)[$entry->lineup_id]
-                : Ratings::forUser($entry->user_id, $tournament->game, $tournament->mode, $pool);
+            $rating = $pool === Rating::RATED ? $pairs[$key]['season'] : $pairs[$key]['casual'];
             $path = $done->filter(function (TournamentMatch $match) use ($entry): bool {
                 $winner = $match->matchResult()?->winner;
                 $own = $match->slots->firstWhere('tournament_participant_id', $entry->id);
@@ -257,6 +259,7 @@ final class PrideMoments
             'tournament_id' => $tournament->id,
             'match' => $final->id,
             'ladder' => BadgeCopy::ladder($tournament->game, $tournament->mode),
+            'pool' => $pool,
             'best_of' => $tournament->isDirectorMode() ? null : (int) $options->finalBestOf,
             'sides' => $sides,
         ];

@@ -144,7 +144,7 @@ test('a new ladder fills its form from the right with empty slots', function () 
     expect($form[1])->toBe(['none', 'none', 'none', 'win', 'win']);
 });
 
-test('once a season is live the ladder is the rated one, with its rank badge', function () {
+test('once a season is live the rated ladder comes first with its rank badge, and the casual one stays (plan "Season vs. Casual", P1)', function () {
     openSeason();
     $player = User::factory()->create();
     playerStatsChess($player, [['win', 16], ['loss', -10]]);
@@ -152,11 +152,12 @@ test('once a season is live the ladder is the rated one, with its rank badge', f
 
     $html = $this->get(route('players.show', $player->npub))->assertOk()->getContent();
 
-    // 1140: platinum-2 with six rated results.
-    expect(substr_count($html, 'data-test="player-ladder"'))->toBe(1)
-        ->and($html)->toContain('data-pool="rated"')
-        ->and((string) str($html)->after('data-test="player-ladder"')->before('</li>'))->toContain('>1,140<')->toContain(__('Platinum').' II')
-        // The season record lists the Pre-Season and Season 0 apart.
+    // 1140: platinum-2 with six rated results; the casual card after it.
+    expect(substr_count($html, 'data-test="player-ladder"'))->toBe(2)
+        ->and((string) str($html)->after('data-test="player-ladder"')->before('</li>'))->toContain('data-pool="rated"')->toContain('>1,140<')->toContain(__('Platinum').' II')->toContain('Season 1')
+        ->and((string) str($html)->afterLast('data-test="player-ladder"')->before('</li>'))->toContain('data-pool="casual"')->toContain('>1,016<')->toContain(__('Casual'))
+        // The season record lists Season 1 and Casual apart, never "Season 0".
+        ->and($html)->not->toContain('Season 0')
         ->and((string) str($html)->after('data-season="rated-pre-season"')->before('</li>'))->toContain(__(':w W, :d D, :l L', ['w' => 6, 'd' => 0, 'l' => 0]))
         ->and((string) str($html)->after('data-season="casual"')->before('</li>'))->toContain(__(':w W, :d D, :l L', ['w' => 1, 'd' => 0, 'l' => 1]));
 });

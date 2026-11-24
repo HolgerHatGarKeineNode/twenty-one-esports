@@ -191,6 +191,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
             {{-- My ratings, one table (Profile.dc.html "Deine Ratings"). --}}
             <section aria-labelledby="me-ratings-h" class="flex min-w-0 flex-col gap-3" data-test="me-ratings">
                 <h2 id="me-ratings-h" class="rv-h3">{{ __('Your ratings') }}</h2>
+                @include('partials.season-casual-legend')
                 @if ($ratings === [])
                     <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="me-ratings-empty">{{ __('Your rating shows here after your first result.') }}</p>
                 @else
@@ -200,12 +201,13 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                             <tbody>
                                 @foreach ($ratings as $standing)
                                     @php($rating = $standing['rating'])
-                                    <tr wire:key="rating-{{ $standing['game'] }}-{{ $standing['mode'] }}-{{ $standing['lineup']?->id }}" data-test="me-rating" data-pool="{{ $rating['pool'] }}">
+                                    <tr wire:key="rating-{{ $standing['game'] }}-{{ $standing['mode'] }}-{{ $standing['lineup']?->id }}-{{ $rating['pool'] }}" data-test="me-rating" data-pool="{{ $rating['pool'] }}">
                                         <td><x-game-cover :game="$standing['game']" size="thumb" class="h-6 w-[43px] rounded-[2px] object-cover" /></td>
                                         <td class="whitespace-normal">{{ $standing['label'] }}@if ($standing['lineup']), {{ $standing['lineup']->clan->clantag }}@endif
                                             <span class="block text-xs text-ink-3">
                                                 @if ($rating['pool'] === 'rated')
                                                     @php($badge = \App\Support\Rating\Ratings::badge($rating['tier']))
+                                                    {{ \App\Support\Rating\Ratings::label($rating['pool']) }}
                                                     <x-rank-badge :tier="$badge['tier']" :level="$badge['level']" />
                                                 @else
                                                     {{ __('Casual') }}@if ($rating['provisional']), {{ __('provisional') }}@endif

@@ -18,7 +18,6 @@ use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Dock\OpenMatches;
 use App\Support\Rating\Ratings;
-use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentChampionMoment;
 use Illuminate\Support\Facades\Cache;
 
@@ -118,11 +117,12 @@ final class GameLanding
         $rows = Rating::query()->where('game', $game)->where('results', '>', 0)
             ->where(fn ($query) => $query->where('user_id', $user->id)->orWhereIn('lineup_id', $lineups))
             ->get()
-            ->filter(fn (Rating $row): bool => $row->pool === Ratings::pool(Ladders::isOpen($game, $row->mode))
-                && $row->season === Ratings::season($row->pool, $game, $row->mode))
+            ->filter(fn (Rating $row): bool => $row->season === Ratings::season($row->pool, $game, $row->mode))
             ->sortByDesc('rating');
+        // The Season once the viewer has a result there, else casual (plan "Season vs. Casual", P1).
+        $rated = $rows->where('pool', Rating::RATED);
 
-        $best = $rows->first();
+        $best = $rated->isNotEmpty() ? $rated->first() : $rows->first();
 
         if (! $best instanceof Rating) {
             return null;

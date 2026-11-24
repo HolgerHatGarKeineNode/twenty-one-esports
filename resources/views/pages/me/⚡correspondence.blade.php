@@ -196,8 +196,7 @@ new #[Title('Your correspondence games')] #[Layout('layouts::app', ['section' =>
     $reminderReach = $settings->remoteChannels(\App\Enums\NotificationKind::Reminder, $daily);
     $reminderChannels = array_values(array_filter([in_array('dm', $reminderReach, true) ? __('Nostr DM') : null, in_array('push', $reminderReach, true) ? __('browser push') : null]));
     $notificationsOn = $moveReach !== [] || $reminderReach !== [];
-    $pool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
-    $opponentRatings = \App\Support\Rating\Ratings::forUsers($cards->map(fn ($card) => $card['opponent']?->id)->all(), 'chess', 'correspondence', $pool);
+    $opponentRatings = \App\Support\Rating\Ratings::shownForUsers($cards->map(fn ($card) => $card['opponent']?->id)->all(), 'chess', 'correspondence');
     $myDeltas = \App\Models\RatingChange::query()->where('source', \App\Models\RatingChange::CHESS)->whereIn('source_id', $finished->pluck('id'))
         ->whereHas('rating', fn ($query) => $query->where('subject', 'user:'.$user->id))->pluck('delta', 'source_id');
     /*
