@@ -317,11 +317,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
      */
     private function reasonIn(string $mode): ?array
     {
-        if (! RatedBoard::offered() && Ladders::isOpen($this->slug, $mode)) {
+        $user = auth()->user();
+
+        // A guest is asked to log in first, also while the rated queue is off (third review: "not open yet" had taken its place).
+        if (! RatedBoard::offered() && Ladders::isOpen($this->slug, $mode) && $user instanceof User) {
             return ['kind' => 'closed', 'message' => __('Rated :game is not open yet. Games are casual for now.', ['game' => GameNames::game($this->slug)])];
         }
-
-        $user = auth()->user();
 
         if (! $user instanceof User) {
             return match (true) {

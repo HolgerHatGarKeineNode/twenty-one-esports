@@ -48,6 +48,37 @@ final class OnSite
         return is_int($seen) && now()->getTimestamp() - $seen < $this->window();
     }
 
+    /**
+     * {@see isOnSite()} for several players in one cache read (x-opponents.mutual's rows); fails open the same way.
+     *
+     * @param  iterable<User>  $users
+     * @return array<int, bool> user id => on the site
+     */
+    public function areOnSite(iterable $users): array
+    {
+        $keys = [];
+
+        foreach ($users as $user) {
+            $keys[$user->id] = self::KEY.$user->id;
+        }
+
+        if ($keys === []) {
+            return [];
+        }
+
+        try {
+            $seen = Cache::many(array_values($keys));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return array_fill_keys(array_keys($keys), false);
+        }
+
+        $now = now()->getTimestamp();
+
+        return array_map(fn (string $key): bool => is_int($seen[$key] ?? null) && $now - $seen[$key] < $this->window(), $keys);
+    }
+
     private function window(): int
     {
         return max(1, (int) config('esports.notifications.on_site_seconds'));

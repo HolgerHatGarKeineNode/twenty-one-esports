@@ -9750,5 +9750,6 @@
     "No member among the players you have played yet.": "Unter deinen bisherigen Gegnern ist noch kein Mitglied.",
     "Members you have played": "Mitglieder, gegen die du gespielt hast",
     "Raise your trust rank": "Vertrauensrang steigern",
-    "Blocks in :season": "Blöcke in :season"
+    "Blocks in :season": "Blöcke in :season",
+    ":name is not Trusted yet": ":name ist noch nicht Trusted"
 }

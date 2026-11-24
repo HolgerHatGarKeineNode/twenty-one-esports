@@ -94,10 +94,23 @@ final class SeasonPath
 
         $mutual = $this->opponents->mutual($user);
 
+        // With a concrete opponent the step is the pair gate itself (third review, finding 2): the two list each other
+        // AND the opponent passes the gate too, so "eligible" never shows for a pair the gate refuses.
+        $pairRefused = false;
+
         if ($opponent !== null && $opponent->id !== $user->id) {
-            $steps[] = in_array($opponent->pubkey, $mutual, true)
-                ? $this->step('opponent', true, __('You and :name list each other as opponents', ['name' => $opponent->displayName()]))
-                : [...$this->step('opponent', false, __('Add :name as an opponent; they add you back.', ['name' => $opponent->displayName()])), 'player' => $opponent];
+            $pin = $this->gate->pin([$user->pubkey, $opponent->pubkey], [$user->pubkey, $opponent->pubkey]);
+            $pairRefused = $pin->refusal() !== null;
+            $blocker = $this->opponentBlocker($opponent, $pin);
+
+            if ($blocker !== null) {
+                $steps[] = $this->step('opponent', false, $blocker);
+            } elseif (! in_array($opponent->pubkey, $mutual, true)) {
+                $steps[] = [...$this->step('opponent', false, __('Add :name as an opponent; they add you back.', ['name' => $opponent->displayName()])), 'player' => $opponent];
+            } else {
+                // The opponent's side holds; what still refuses the pair is the viewer's own step above.
+                $steps[] = $this->step('opponent', true, __('You and :name list each other as opponents', ['name' => $opponent->displayName()]));
+            }
         } else {
             $steps[] = $mutual !== []
                 ? $this->step('opponents', true, trans_choice(':count mutual opponent|:count mutual opponents', count($mutual)))
@@ -106,7 +119,7 @@ final class SeasonPath
 
         $names = $mutual === [] ? [] : array_values(User::query()->whereIn('pubkey', array_slice($mutual, 0, 6))->orderBy('id')->get()
             ->map(fn (User $player): array => ['name' => $player->displayName(), 'href' => route('players.show', $player->npub)])->all());
-        $eligible = collect($steps)->every(fn (array $step): bool => $step['done']);
+        $eligible = ! $pairRefused && collect($steps)->every(fn (array $step): bool => $step['done']);
 
         return [...$path, 'state' => $eligible ? 'eligible' : 'steps', 'steps' => $steps, 'mutual' => $names, 'rank' => $rank, 'minimum' => $minimum];
     }
@@ -128,9 +141,16 @@ final class SeasonPath
      * the opponents page's #trust), or the blocker's message without a link;
      * null when a mutual opponent is all that is missing, or nothing is.
      *
+     * With an opponent in context (third review, finding 2), the gate's other
+     * half too: when the viewer's own steps are done but the opponent would
+     * refuse the pair ({@see opponentBlocker()}), that sentence with the key
+     * `opponent`, so the end of a game never says "rated next time" to a
+     * pair the gate refuses. Whether the two list each other is no part of
+     * it: that is what the add at the end of a game is for.
+     *
      * @return array{key: string, text: string, href: string|null}|null
      */
-    public function missing(User $user): ?array
+    public function missing(User $user, ?User $opponent = null): ?array
     {
         $path = $this->for($user);
 
@@ -146,7 +166,43 @@ final class SeasonPath
             }
         }
 
-        return null;
+        return $opponent !== null ? $this->opponentMissing($user, $opponent) : null;
+    }
+
+    /**
+     * Only the opponent's half of {@see missing()}: what the pair gate
+     * refuses on this opponent's side, or null (also for the viewer). For a
+     * view that already read missing() for the viewer and has several
+     * opponents (a team match), one pin each.
+     *
+     * @return array{key: 'opponent', text: string, href: null}|null
+     */
+    public function opponentMissing(User $user, User $opponent): ?array
+    {
+        if ($opponent->id === $user->id || ! $this->gate->isAvailable()) {
+            return null;
+        }
+
+        $blocker = $this->opponentBlocker($opponent, $this->gate->pin([$user->pubkey, $opponent->pubkey], [$user->pubkey, $opponent->pubkey]));
+
+        return $blocker === null ? null : ['key' => 'opponent', 'text' => $blocker, 'href' => null];
+    }
+
+    /**
+     * Why the gate refuses this opponent's side of the pair, in neutral words
+     * (no rank number of another player): below the trust minimum, or left
+     * out of the pin by a fair-play bar ({@see RatedTrustGate::pin()}); null
+     * while the opponent is eligible.
+     */
+    private function opponentBlocker(User $opponent, GatePin $pin): ?string
+    {
+        if ($pin->isEligible($opponent->pubkey)) {
+            return null;
+        }
+
+        return isset($pin->players[$opponent->pubkey])
+            ? __(':name is not Trusted yet', ['name' => $opponent->displayName()])
+            : __(':name cannot play rated at the moment.', ['name' => $opponent->displayName()]);
     }
 
     /**

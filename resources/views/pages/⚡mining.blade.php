@@ -109,6 +109,20 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     }
 
     /**
+     * The game the live hero's primary button leads to for the viewer (SeasonPath::gameToMine()), read once per render:
+     * the hero and standing() both need it, and each read costs two queries (PageQueryBudgetTest).
+     *
+     * @return array{slug: string, name: string, href: string, rated: bool}|null
+     */
+    #[Computed]
+    public function toMine(): ?array
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? SeasonPath::gameToMine($user) : null;
+    }
+
+    /**
      * The viewer's blocks today against the daily limit (plan "mining-page-clarity" P2, canvas SeasonLive, NEU
      * (Scope) approved 2026-11-20), the one chip left beside "Your path to Season 1" (plan "Season vs. Casual", P4:
      * x-season.path took over the trust and opponents chips, with every step and its fix), for the game the primary
@@ -130,7 +144,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         $chips = [];
 
         $inForce = $this->chain['in_force'];
-        $game = SeasonPath::gameToMine($user)['slug'] ?? 'chess';
+        $game = $this->toMine['slug'] ?? 'chess';
         $limit = $inForce->dailyLimitFor($game);
 
         if ($limit !== null) {
@@ -304,7 +318,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         {{-- Design-lead review, finding 4: a player who cannot play rated yet gets the first open step of the path as the
                              primary action (its fix), and the game as the secondary one, casual. --}}
                         @php
-                            $toMine = SeasonPath::gameToMine($viewer);
+                            $toMine = $this->toMine;
                             $minePath = app(SeasonPath::class)->for($viewer);
                             $firstStep = $minePath['state'] === 'steps' ? collect($minePath['steps'])->first(fn (array $step): bool => ! $step['done'] && $step['href'] !== null) : null;
                         @endphp

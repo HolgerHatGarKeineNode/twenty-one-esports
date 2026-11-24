@@ -2,9 +2,9 @@
 
 {{--
     "Mutual opponents" (plan "Season vs. Casual", P5): the players the signed-in player lists each other with, in the
-    chess lobby, a board lobby and /me. One row each (at most LIMIT): the name (their player page), whether they are on
-    the site now (OnSite, the bell's ping), whether the pair can play Season 1 rated now (RatedTrustGate, the same gate
-    as the queue and the challenge), and where the game has one, the direct rated challenge: a board game's
+    chess lobby, a board lobby and /me. One row each (at most LIMIT, the first of the list): the name (their player
+    page), whether they are on the site now (OnSite, the bell's ping), whether the pair can play Season 1 rated now
+    (the facts of RatedTrustGate, the same gate as the queue and the challenge), and where the game has one, the direct rated challenge: a board game's
     correspondence challenge to that player (`?to=`, rated preselected when the gate lets the pair). Chess has no direct
     rated challenge (its daily mode is casual, live invites are casual): the rated search pairs mutual players.
 
@@ -23,21 +23,30 @@
         $game ??= \App\Support\SeasonChain\SeasonPath::gameToMine($viewer)['slug'] ?? null;
         // The direct rated challenge: a board game with the correspondence mode, while rated board play is offered.
         $challenge = $game !== null && $registry->isBoard($game) && $registry->mode($game, \App\Models\BoardGame::CORRESPONDENCE) !== null && \App\Support\Board\RatedBoard::offered();
-        $gate = app(\App\Support\SeasonChain\RatedTrustGate::class);
-        $onSite = app(\App\Support\Notifications\OnSite::class);
-        $users = \App\Models\User::query()->whereIn('pubkey', $pubkeys)->get()->sortBy(fn (\App\Models\User $user): int => array_search($user->pubkey, $pubkeys, true))->values();
+        // At most LIMIT rows, in list order, before anything is read per row (third review, finding 3: the gate per
+        // opponent grew by ~19 queries with every mutual opponent).
+        $users = \App\Models\User::query()->whereIn('pubkey', $pubkeys)->get()->sortBy(fn (\App\Models\User $user): int => array_search($user->pubkey, $pubkeys, true))->take($limit)->values();
+        // The gate's facts for the viewer and the shown rows in one read each (RatedTrustGate::refusal() per pair reads
+        // the same): trust ranks computed, nobody barred, both at the minimum. The pairs list each other (mutual).
+        $facts = app(\App\Support\SeasonChain\TrustFacts::class);
+        $shown = [$viewer->pubkey, ...$users->pluck('pubkey')->all()];
+        $available = $facts->available();
+        $ranks = $available ? $facts->at($shown, [$viewer->pubkey, $viewer->pubkey])['trust'] : [];
+        $barred = $available ? \App\Support\FairPlay\FairPlay::barred($shown) : [];
+        $minimum = \App\Support\SeasonChain\RatedTrustGate::minimum();
+        $eligible = fn (string $pubkey): bool => $available && ! isset($barred[$pubkey]) && (int) ($ranks[$pubkey] ?? 0) >= $minimum;
+        $online = app(\App\Support\Notifications\OnSite::class)->areOnSite($users);
 
         foreach ($users as $user) {
-            $pair = [$viewer->pubkey, $user->pubkey];
             $rows[] = [
                 'user' => $user,
-                'online' => $onSite->isOnSite($user),
-                'ready' => $gate->refusal($pair, $pair) === null,
+                'online' => $online[$user->id] ?? false,
+                'ready' => $eligible($viewer->pubkey) && $eligible($user->pubkey),
             ];
         }
 
         // Who can play now first: online and ready, then ready, then the rest, in list order within each.
-        $rows = collect($rows)->sortBy(fn (array $row): int => ($row['online'] ? 0 : 1) + ($row['ready'] ? 0 : 2))->take($limit)->values()->all();
+        $rows = collect($rows)->sortBy(fn (array $row): int => ($row['online'] ? 0 : 1) + ($row['ready'] ? 0 : 2))->values()->all();
         $season = \App\Support\Badges\BadgeCopy::season(\App\Support\Series\Ladders::season() ?? 'pre-season');
     }
 @endphp

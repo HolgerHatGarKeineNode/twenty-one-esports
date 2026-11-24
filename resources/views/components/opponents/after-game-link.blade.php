@@ -14,7 +14,8 @@
 
     "Rated next time" only for a viewer who meets every other step of the path (design-lead review, finding 2): with
     a profile or trust step open, the two text states give way to what is missing ("You still need: Trust rank 0/50",
-    a link to the opponents page's #trust; SeasonPath::missing()).
+    a link to the opponents page's #trust; SeasonPath::missing()). The same when the gate would refuse the opponent's
+    side of the pair (third review, finding 2): ":name is not Trusted yet", as text.
 --}}
 @php
     $viewer ??= auth()->user();
@@ -22,7 +23,7 @@
         && \App\Support\SeasonChain\OpponentLists::forLeague() !== null;
     $relation = $show ? app(\App\Support\SeasonChain\Opponents::class)->relation($viewer, $opponent) : null;
     $name = $show ? $opponent->displayName() : '';
-    $missing = in_array($relation, ['mutual', 'listed'], true) ? app(\App\Support\SeasonChain\SeasonPath::class)->missing($viewer) : null;
+    $missing = in_array($relation, ['mutual', 'listed'], true) ? app(\App\Support\SeasonChain\SeasonPath::class)->missing($viewer, $opponent) : null;
 @endphp
 
 @if ($show)

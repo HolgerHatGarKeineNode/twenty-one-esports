@@ -132,23 +132,24 @@ final class Opponents
     }
 
     /**
-     * The entries of the player's list that list the player back.
+     * The entries of the player's list that list the player back. The
+     * entries' newest lists in one read of the current rows (third review,
+     * finding 3: one read per entry grew with every opponent).
      *
      * @return list<string> pubkeys
      */
     public function mutual(User $player): array
     {
         $lists = OpponentLists::forLeague();
+        $entries = $lists === null ? [] : $this->entries($player);
 
-        if ($lists === null) {
+        if ($lists === null || $entries === []) {
             return [];
         }
 
-        return array_values(array_filter($this->entries($player), function (string $entry) use ($lists, $player): bool {
-            $theirs = $lists->newest($entry);
+        $theirs = $lists->newestEntriesOf($entries);
 
-            return $theirs !== null && in_array($player->pubkey, OpponentLists::entries($theirs), true);
-        }));
+        return array_values(array_filter($entries, fn (string $entry): bool => in_array($player->pubkey, $theirs[$entry] ?? [], true)));
     }
 
     /**
