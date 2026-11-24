@@ -15,11 +15,17 @@
  * The remote-signer key is the user's key, as with Amber.
  *
  * SIGUSR2 revokes every authorised client (the user removed the app in Amber).
- * The relay may go away and come back: the bunker reconnects and resubscribes.
+ * The relay may go away and come back: the bunker reconnects after
+ * BUNKER_RECONNECT_MS (default 200) and resubscribes. NIP-46 requests are
+ * ephemeral events (kind 24133): a relay only forwards them to a subscription
+ * that is open at that moment, so a request sent before the bunker listens
+ * again is lost. The test therefore waits for the "resubscribed" line below,
+ * and sets the delay long enough to make that wait the thing under test.
  *
  * BUNKER_LOG gets one JSON line per request: method, client pubkey, outcome.
  * No key, secret or event content is ever written there or to stdout.
- * Stdout prints "ready" once the first subscription reached EOSE.
+ * Stdout prints "ready" once the first subscription reached EOSE, and
+ * "resubscribed" for every later one (after a relay restart).
  */
 
 import { appendFileSync } from 'node:fs';
@@ -32,6 +38,7 @@ const secretKey = hexToBytes(process.env.BUNKER_KEY ?? '');
 const oneTimeSecret = process.env.BUNKER_SECRET ?? '';
 const relayUrl = process.env.BUNKER_RELAY ?? '';
 const logFile = process.env.BUNKER_LOG ?? '';
+const reconnectMs = Number(process.env.BUNKER_RECONNECT_MS ?? '200');
 const pubkey = getPublicKey(secretKey);
 
 const authorised = new Set();
@@ -117,9 +124,9 @@ function run() {
             return;
         }
 
-        if (frame[0] === 'EOSE' && !announced) {
+        if (frame[0] === 'EOSE') {
+            process.stdout.write(announced ? 'resubscribed\n' : 'ready\n');
             announced = true;
-            process.stdout.write('ready\n');
 
             return;
         }
@@ -157,7 +164,7 @@ function run() {
         socket.send(JSON.stringify(['EVENT', response]));
     });
 
-    socket.addEventListener('close', () => setTimeout(run, 200));
+    socket.addEventListener('close', () => setTimeout(run, reconnectMs));
     socket.addEventListener('error', () => {});
 }
 

@@ -72,6 +72,10 @@ beforeEach(function () {
         'BUNKER_SECRET' => $this->connectSecret,
         'BUNKER_RELAY' => $this->relayUrl,
         'BUNKER_LOG' => $this->bunkerLog,
+        // Slower than the 1.5 s the test once slept after a relay restart plus the page load behind it (4 s failed the
+        // sleeping version at post 4, 2.5 s did not): a bunker that listens again late is what a loaded machine
+        // produces by accident, here it is the rule, so the condition wait below is what the test stands on.
+        'BUNKER_RECONNECT_MS' => (string) BUNKER_RECONNECT_MS,
     ])->start(['node', 'tests/Support/amber-bunker.mjs']);
 
     for ($i = 0; $i < 100 && ! str_contains($this->bunker->output(), 'ready'); $i++) {
@@ -93,6 +97,25 @@ function bunkerRelayStart(int $port): InvokedProcess
     WaitForPort::open('127.0.0.1', $port);
 
     return $relay;
+}
+
+/** How long the emulated bunker waits before it dials the relay again after the relay went away. */
+const BUNKER_RECONNECT_MS = 4_000;
+
+/**
+ * The relay restarted under the open page: wait until the bunker listens on it again. NIP-46 requests are ephemeral
+ * (kind 24133), a relay forwards them only to a subscription open at that moment, so a request sent before this
+ * point is never heard (the full-run failure "Your signer did not answer" on post 4). A condition, not a sleep.
+ */
+function bunkerWaitForResubscribe(InvokedProcess $bunker, int $before): void
+{
+    $deadline = microtime(true) + 20;
+
+    while (substr_count($bunker->output(), 'resubscribed') <= $before && microtime(true) < $deadline) {
+        Execution::instance()->wait(0.05);
+    }
+
+    expect(substr_count($bunker->output(), 'resubscribed'))->toBeGreaterThan($before, 'the bunker never listened on the restarted relay');
 }
 
 /**
@@ -284,9 +307,10 @@ test('a bunker login signs every later post of a game without a second pairing, 
     // 4: the relay goes away and comes back under the open page, whose remote
     // signer is live since post 3; the next game then loads in full (a game
     // page is never swapped in, P6b) and signs with the session it restores.
+    $resubscribed = substr_count($this->bunker->output(), 'resubscribed');
     $this->relay->stop(1);
     $this->relay = bunkerRelayStart($this->relayPort);
-    Execution::instance()->wait(1.5);
+    bunkerWaitForResubscribe($this->bunker, $resubscribed);
     $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate('.json_encode($path(3)).'); }');
     BrowserWait::until($page, '() => location.pathname === '.json_encode($path(3)).' && document.readyState === "complete" && window.__sameDocument !== true', 15_000);
     bunkerWaitForPost($page);
@@ -376,7 +400,11 @@ test('a bunker that revoked this browser gets a clear message, the stored sessio
 
     // The player removes this app in Amber (SIGUSR2 to the emulated bunker).
     $this->bunker->signal(12);
-    Execution::instance()->wait(0.5);
+    $deadline = microtime(true) + 10;
+    while (! collect(bunkerRequests($this->bunkerLog))->contains('method', 'revoke-all') && microtime(true) < $deadline) {
+        Execution::instance()->wait(0.05);
+    }
+    expect(collect(bunkerRequests($this->bunkerLog))->contains('method', 'revoke-all'))->toBeTrue('the bunker never handled the revoke signal');
 
     $page->locator('[data-test=game-post-open]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=game-post-sign]") !== null', 5_000);
