@@ -30,7 +30,6 @@
         {{-- Ladders: rating, rank, form, share of wins, peak --}}
         <section aria-labelledby="ps-ladders-h" class="flex flex-col gap-3 lg:gap-4" data-test="player-ladders">
             <h2 id="ps-ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Ladders') }}</h2>
-            @include('partials.season-casual-legend')
             @if ($games === [])
                 <div class="flex flex-col items-start gap-3 rounded-lg px-4 py-4 shadow-ring-hairline lg:px-5" data-test="player-ladders-empty">
                     <p class="{{ $empty }}">{{ $isMe ? __('No results yet. Your first finished game puts you on a ladder.') : __('No results yet. The first finished game puts :name on a ladder.', ['name' => $name]) }}</p>
@@ -105,6 +104,8 @@
                     @endforeach
                 </ul>
             @endif
+            {{-- Under the cards, so the first card stays level with the side column. --}}
+            @include('partials.season-casual-legend')
         </section>
 
         {{-- The last results, faces, score and what each did to the rating --}}
