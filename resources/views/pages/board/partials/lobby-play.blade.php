@@ -51,7 +51,7 @@
     $ratedRefusal = $hasLive ? $refusals[$firstLive] : $this->ratedRefusal;
     $defaultReason = $reasons[$firstLive] ?? null;
     $anyRefused = array_filter($refusals) !== [];
-    // "Your path to Season 1" under the panels (plan P4), read once: while it lists the steps, the reason line under the
+    // The season path card (x-season.path) under the panels (plan P4), read once: while it lists the steps, the reason line under the
     // choice would say the same again (design-lead review, finding 3); the badge on the rated option stays.
     $seasonPath = $user instanceof \App\Models\User && ($hasLive || app(GameRegistry::class)->mode($slug, BoardGame::CORRESPONDENCE) !== null)
         ? app(\App\Support\SeasonChain\SeasonPath::class)->for($user, $slug, $hasLive ? $firstLive : BoardGame::CORRESPONDENCE) : null;

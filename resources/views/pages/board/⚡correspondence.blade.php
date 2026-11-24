@@ -380,7 +380,7 @@ new #[Layout('layouts::app')] class extends Component {
     $ratedRefusal = $this->ratedOffered ? $this->ratedRefusal : null;
     $ownRefusal = $ratedRefusal !== null && $ratedRefusal['reason'] === 'rated_unavailable';
     $members = BoardChallenges::members($slug);
-    // "Your path to Season 1" under the send button (plan P4), read once: while it lists the steps, the line under the
+    // The season path card (x-season.path) under the send button (plan P4), read once: while it lists the steps, the line under the
     // choice would repeat them (design-lead review, finding 3).
     $seasonPath = $me instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($me, $slug, BoardGame::CORRESPONDENCE, $opponent) : null;
     $pathShowsSteps = ($seasonPath['state'] ?? null) === 'steps';

@@ -45,7 +45,7 @@
     $allRefused = ! in_array(null, $ratedRefusals, true);
     $reasons = $this->ratedReasons;
     $defaultReason = $reasons[ChessModes::DEFAULT] ?? null;
-    // "Your path to Season 1" under the panels (plan P4), read once: while it lists the steps, the reason line under the
+    // The season path card (x-season.path) under the panels (plan P4), read once: while it lists the steps, the reason line under the
     // choice would say the same again (design-lead review, finding 3); the badge on the rated option stays.
     $seasonPath = $user instanceof \App\Models\User ? app(\App\Support\SeasonChain\SeasonPath::class)->for($user, 'chess', ChessModes::DEFAULT) : null;
     $pathShowsSteps = ($seasonPath['state'] ?? null) === 'steps';
