@@ -83,6 +83,16 @@ test('the hub lists the casual rating next to an empty open Season ladder', func
         ->assertSee('1,137');
 });
 
+test('the hub keeps the casual rating once the Season rating has a result, each labelled', function () {
+    openSeason();
+    $player = User::factory()->create();
+    ratingPairRow($player, Rating::CASUAL, 1137, 7);
+    ratingPairRow($player, Rating::RATED, 1042, 2, 'pre-season');
+
+    $this->actingAs($player)->get(route('dashboard'))->assertOk()
+        ->assertSeeInOrder(['data-test="me-rating" data-pool="rated"', 'Season 1', '1,042', 'data-test="me-rating" data-pool="casual"', __('Casual'), '1,137'], false);
+});
+
 test('the lobby ladder preview names its pool: Casual while the Season ladder has no result', function () {
     openSeason();
     // The chess lobby opens its ladder on rapid.
