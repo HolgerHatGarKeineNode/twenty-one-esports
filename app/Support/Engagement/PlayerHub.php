@@ -182,8 +182,10 @@ final class PlayerHub
             return [];
         }
 
-        return array_values(Tournament::query()->whereIn('id', $ids)->orderBy('starts_at')->get()
-            ->map(fn (Tournament $tournament): array => [
+        $entries = [];
+
+        foreach (Tournament::query()->whereIn('id', $ids)->orderBy('starts_at')->get() as $tournament) {
+            $entries[] = [
                 'tournament' => $tournament,
                 'state' => match ($tournament->status) {
                     TournamentStatus::Running => 'running',
@@ -191,9 +193,14 @@ final class PlayerHub
                     default => 'signup',
                 },
                 'startsIn' => (new TournamentLanding($tournament, $this->user))->startsIn(),
-            ])
-            ->sortBy(fn (array $entry): array => [$entry['state'] === 'running' ? 0 : 1, $entry['tournament']->starts_at->getTimestamp()])
-            ->values()->all());
+            ];
+        }
+
+        // Running first, then by start; usort is stable, as sortBy was.
+        $order = fn (array $entry): array => [$entry['state'] === 'running' ? 0 : 1, $entry['tournament']->starts_at->getTimestamp()];
+        usort($entries, fn (array $a, array $b): int => $order($a) <=> $order($b));
+
+        return $entries;
     }
 
     /**

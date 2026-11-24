@@ -102,10 +102,12 @@ final class PlayerStats
         $lineups = Lineup::query()->whereIn('id', $rows->pluck('lineup_id')->filter())->with('clan')->get()->keyBy('id');
         $places = $this->places($rows);
 
-        $ladders = $rows->map(function (Rating $row) use ($form, $peaks, $lineups, $places): array {
+        $ladders = [];
+
+        foreach ($rows as $row) {
             $summary = Ratings::summary($row, $row->pool);
 
-            return [
+            $ladders[] = [
                 'key' => $row->game.'-'.$row->mode.'-'.$row->subject.'-'.$row->pool,
                 'game' => $row->game,
                 'mode' => $row->mode,
@@ -118,14 +120,18 @@ final class PlayerStats
                 'of' => $places[$row->id]['of'] ?? 0,
                 'href' => route('ladder.show', [$row->game, $row->mode]),
             ];
-        });
+        }
 
-        return array_values($ladders->sortBy(fn (array $ladder): array => [
+        // Registry order of game and mode, solo before a lineup, rated before casual; usort is stable, as sortBy was.
+        $order = fn (array $ladder): array => [
             array_search($ladder['game'], $games, true),
             array_search($ladder['mode'], array_keys($registry->find($ladder['game'])?->modes() ?? []), true),
             $ladder['lineup'] !== null,
             $ladder['rating']['pool'] !== Rating::RATED,
-        ])->all());
+        ];
+        usort($ladders, fn (array $a, array $b): int => $order($a) <=> $order($b));
+
+        return $ladders;
     }
 
     /**
