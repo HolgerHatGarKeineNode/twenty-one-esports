@@ -65,7 +65,7 @@ use Illuminate\Support\Facades\Route;
  *
  * Order: live first (a check-in that is on this player counts as live), then
  * everything on this player by deadline, then what waits by deadline. One
- * query per kind, each capped at KIND_LIMIT rows.
+ * query per kind, each capped at KIND_LIMIT rows (running games: GAME_LIMIT, the player's move first).
  */
 final class OpenMatches
 {
@@ -73,6 +73,14 @@ final class OpenMatches
     private const array GERMAN_LOWER_STARTS = ['Dein', 'Deine', 'Du', 'Andere', 'Startet', 'Beginnt', 'Live', 'Antworten', 'Wartet', 'Bereit', 'Jetzt', 'Eingecheckt', 'Läuft'];
 
     public const KIND_LIMIT = 20;
+
+    /**
+     * Running games of one player (chess and board games) the dock reads. A tournament puts a lot of them on one
+     * player at once (a Blockli group starts every round together), so this is far above KIND_LIMIT, and the games
+     * on the player come first: a cap by newest id alone dropped older correspondence games where it was the
+     * player's move behind a tournament's waiting ones (2026-11-26: "21 wartet", my other games missing).
+     */
+    public const GAME_LIMIT = 100;
 
     /** Scheduled series join the dock this long before their start. */
     public const STARTS_SOON_MS = 3_600_000;
@@ -297,8 +305,9 @@ final class OpenMatches
             ->where('status', ChessGameStatus::Active)
             ->when($exclude !== null, fn ($query) => $query->whereKeyNot($exclude))
             ->with(['white', 'black'])
+            ->orderByRaw("CASE WHEN (white_id = ? AND fen LIKE '% w %') OR (black_id = ? AND fen LIKE '% b %') THEN 0 ELSE 1 END", [$user->id, $user->id])
             ->latest('id')
-            ->limit(self::KIND_LIMIT)
+            ->limit(self::GAME_LIMIT)
             ->get();
 
         return array_values($games->map(fn (ChessGame $game) => $game->isCorrespondence() ? $this->daily($game, $user, $nowMs) : $this->blitz($game, $user, $nowMs))->all());
@@ -420,7 +429,11 @@ final class OpenMatches
 
         $games = BoardGame::query()->playedBy($user)->where('status', BoardGameStatus::Active)
             ->when($exclude !== null, fn ($query) => $query->whereKeyNot($exclude))
-            ->with(['white', 'black', 'seriesMatch:id,number'])->latest('id')->limit(self::KIND_LIMIT)->get();
+            ->with(['white', 'black', 'seriesMatch:id,number'])
+            ->orderByRaw("CASE WHEN (white_id = ? AND turn = 'w') OR (black_id = ? AND turn = 'b') THEN 0 ELSE 1 END", [$user->id, $user->id])
+            ->latest('id')
+            ->limit(self::GAME_LIMIT)
+            ->get();
 
         return array_values($games->map(function (BoardGame $game) use ($user, $nowMs): DockItem {
             if ($game->isCorrespondence()) {
