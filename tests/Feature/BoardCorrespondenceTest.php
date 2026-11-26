@@ -487,6 +487,10 @@ test('the correspondence page sends a challenge, and the other player accepts it
 });
 
 test('the dock keeps a game on the player, however many newer games wait behind it', function () {
+    // The 25 games stand in for a tournament's, which start without a challenge: one player may send only
+    // `challenges_per_day` (20) correspondence challenges a day, so the 21st was refused (challenge_limit).
+    config(['esports.board_games.correspondence.challenges_per_day' => 25]);
+
     $anna = correspondencePlayer();
 
     // Anna's own move, in the oldest game of all.
