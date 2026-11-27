@@ -356,8 +356,9 @@ final class Estimator
 
     /**
      * Duration in the game's unit. `$stations` null = online, no limit. In
-     * daily chess, formats whose pairings don't depend on results (round
-     * robin, round-robin groups) start all their games at once.
+     * correspondence play, formats whose pairings don't depend on results
+     * (round robin, round-robin groups) start all their games at once, unless
+     * the organizer chose one round after another (FormatOptions::$atOnce).
      *
      * `$slotOf` gives the time one match of a best-of takes; null = the
      * profile's plan ({@see GameProfile::slot()}).
@@ -397,7 +398,7 @@ final class Estimator
         $rounds = array_map(fn (array $round): array => [...$round, 'merged' => 0], $structure->rounds);
         $tableRounds = self::isTable($format, $options) ? ($format === TournamentFormat::RoundRobin ? count($rounds) : $structure->groupDepth) : 0;
 
-        if ($profile->allAtOnce && self::isTable($format, $options)) {
+        if ($options->roundsAtOnce($profile) && self::isTable($format, $options)) {
             $merged = ['m' => array_sum(array_column(array_slice($rounds, 0, $tableRounds), 'm')), 'final' => false, 'ifNeeded' => false, 'merged' => $tableRounds];
             $rounds = [$merged, ...array_slice($rounds, $tableRounds)];
             $tableRounds = 1;
@@ -513,11 +514,11 @@ final class Estimator
             $duration = $this->duration($format, $structure, $profile, $used, $stations);
             $atOnce = 0;
 
-            if ($profile->allAtOnce && $format === TournamentFormat::RoundRobin) {
+            if ($used->roundsAtOnce($profile) && $format === TournamentFormat::RoundRobin) {
                 $atOnce = $structure->guaranteed;
             }
 
-            if ($profile->allAtOnce && $format === TournamentFormat::TwoStage && $used->groupStage === 'round-robin' && $structure->groups !== []) {
+            if ($used->roundsAtOnce($profile) && $format === TournamentFormat::TwoStage && $used->groupStage === 'round-robin' && $structure->groups !== []) {
                 $atOnce = max($structure->groups) - 1;
             }
 

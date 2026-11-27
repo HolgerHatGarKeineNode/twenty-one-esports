@@ -330,9 +330,11 @@ final class TournamentMatchMaker
      * A round-robin match of a one-day players tournament (the format, or
      * the groups of Two Stage) whose sides still have a match of an earlier
      * round of the same stage to finish: it waits for them, so nobody plays
-     * two series at once, and nobody waits for an unrelated match. Daily
-     * chess starts every round-robin game at once (the estimator plans it
-     * so), and directors open one round at a time themselves.
+     * two series at once, and nobody waits for an unrelated match.
+     * Correspondence play starts every round-robin game at once unless the
+     * organizer chose one round after another (FormatOptions::$atOnce; the
+     * estimator plans it so), and directors open one round at a time
+     * themselves.
      */
     public static function waitsForEarlierRound(Tournament $tournament, TournamentMatch $match): bool
     {
@@ -351,12 +353,14 @@ final class TournamentMatchMaker
 
     /**
      * Whether a stage starts its round-robin matches one after another per
-     * player ({@see waitsForEarlierRound()}): not in daily play, which starts
-     * them all at once, nor for directors, who open the rounds themselves.
+     * player ({@see waitsForEarlierRound()}): not in correspondence play
+     * that starts them all at once (FormatOptions::roundsAtOnce()), nor for
+     * directors, who open the rounds themselves.
      */
     public static function queuesRounds(Tournament $tournament, TournamentStage $stage): bool
     {
-        return ! $tournament->isDirectorMode() && ! $tournament->profile()->isDaily() && $stage->format === TournamentFormat::RoundRobin;
+        return ! $tournament->isDirectorMode() && $stage->format === TournamentFormat::RoundRobin
+            && ! $tournament->formatOptions()->roundsAtOnce($tournament->profile());
     }
 
     /**

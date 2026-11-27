@@ -643,6 +643,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                 ? __('by vote, at the earliest :time', ['time' => $at($tournament->starts_at)])
                 : $at($tournament->starts_at).($openEnd !== null ? ' · '.$openEnd : ''), 'starts'],
             ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
+            // A correspondence round-robin table starts its games at once or round by round, as the organizer chose
+            // (FormatOptions::$atOnce; DerCaddy, 2026-11-26). Live play and a director's tournament have no choice.
+            ...($profile->allAtOnce && ! $tournament->isDirectorMode() && ($tournament->format === TournamentFormat::RoundRobin || ($tournament->format === TournamentFormat::TwoStage && $options->groupStage === 'round-robin'))
+                ? [['calendar', __('Games of the rounds'), $options->atOnce ? __('all at once: every game starts right away') : __('round by round: the next game once both players are done with their earlier ones'), 'at-once']] : []),
             [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
             ['shield-check', __('Results'), match (true) {
                 $tmnfWeek => __('every finish timed by our own TMNF server; a time far below the author time waits for an admin'),
