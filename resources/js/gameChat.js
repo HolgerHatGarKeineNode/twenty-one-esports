@@ -33,6 +33,7 @@
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { entryFor, loadCache, saveCache } from './chatCache.js';
+import { followEnd } from './chatFollow.js';
 import { readMarkers, saveReadMarker } from './chatRead.js';
 import { chatDay, chatTime } from './chatTime.js';
 import { isExpired } from './lobbyCards.js';
@@ -74,6 +75,8 @@ export function gameChat(config) {
         inboxes: null,
         closed: false,
         timers: new Set(),
+        // The message lists that keep to their newest line (chatFollow.js): the desktop panel's and the mobile sheet's.
+        followers: [],
         t: config.labels,
         // The newest message read on this device (ms), and whether the desktop panel (lg and up) is the chat on screen.
         readAt: 0,
@@ -124,9 +127,22 @@ export function gameChat(config) {
             this.closed = true;
             this.timers.forEach(clearTimeout);
             this.timers.clear();
+            this.followers.forEach((follower) => follower.disconnect());
+            this.followers = [];
             this.sub?.close();
             this.inboxSub?.close();
             this.pool?.destroy();
+        },
+
+        /**
+         * Keeps a message list (chat-body, x-init) at its newest line while the reader is at the end (chatFollow.js);
+         * a message of one's own brings it there.
+         */
+        follow(list) {
+            const follower = followEnd(list);
+            this.followers.push(follower);
+            this.$watch('messages.length', () => this.$nextTick(() => follower.update(this.messages.at(-1)?.from === 'me')));
+            this.$nextTick(() => follower.update());
         },
 
         /** The relay pool (a seam for tests/js/dmReplies.test.mjs). */
