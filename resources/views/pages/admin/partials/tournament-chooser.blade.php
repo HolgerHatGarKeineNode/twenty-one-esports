@@ -620,6 +620,7 @@
                         @if (\App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options))
                             @include('pages.admin.partials.tournament-legs')
                         @endif
+                        @include('pages.admin.partials.tournament-at-once')
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">
                                 <span class="text-[13px] font-bold" id="rank-by-l">{{ __('Rank by') }}</span>
@@ -704,6 +705,9 @@
                             </span>
                             <span class="{{ $help }}">{{ __('How many of each group play the final stage.') }}</span>
                         </div>
+                        @if ($options->groupStage === 'round-robin')
+                            @include('pages.admin.partials.tournament-at-once')
+                        @endif
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">
                                 <span id="fs-l" class="text-[13px] font-bold">{{ __('Final stage') }}</span>

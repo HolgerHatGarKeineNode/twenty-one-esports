@@ -463,6 +463,12 @@ abstract class TournamentFormatChooser extends Component
         $this->option('legPoints', $perGame);
     }
 
+    /** A correspondence table starts every game at once or one round after another (FormatOptions::$atOnce); stored only on save. */
+    public function pickAtOnce(bool $atOnce): void
+    {
+        $this->option('atOnce', $atOnce);
+    }
+
     /** A tie for place 1 of the final table played off or shared (FormatOptions::$firstPlaceTie); stored only on save. */
     public function pickFirstPlaceTie(string $rule): void
     {

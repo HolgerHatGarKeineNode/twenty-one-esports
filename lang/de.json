@@ -9751,5 +9751,12 @@
     "Members you have played": "Mitglieder, gegen die du gespielt hast",
     "Raise your trust rank": "Vertrauensrang steigern",
     "Blocks in :season": "Blöcke in :season",
-    ":name is not Trusted yet": ":name ist noch nicht Trusted"
+    ":name is not Trusted yet": ":name ist noch nicht Trusted",
+    "Games of the rounds": "Partien der Runden",
+    "All at once": "Alle gleichzeitig",
+    "Round by round": "Runde für Runde",
+    "Every game starts right away: everyone plays all their opponents at the same time. Shortest, but many games at once.": "Alle Partien starten sofort: Jeder spielt gegen alle Gegner gleichzeitig. Am kürzesten, aber viele Partien auf einmal.",
+    "One round after another: a player's next game starts once both players are done with their earlier ones. One game at a time for everyone, but it takes about as many times longer as there are rounds.": "Eine Runde nach der anderen: Die nächste Partie eines Spielers startet, sobald beide Spieler ihre früheren beendet haben. Jeder hat immer nur eine Partie offen, dafür dauert es ungefähr so viel mal länger, wie es Runden gibt.",
+    "all at once: every game starts right away": "alle gleichzeitig: jede Partie startet sofort",
+    "round by round: the next game once both players are done with their earlier ones": "Runde für Runde: die nächste Partie, sobald beide Spieler ihre früheren beendet haben"
 }

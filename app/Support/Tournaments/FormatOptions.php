@@ -77,6 +77,11 @@ final readonly class FormatOptions
      *                               tournament's mode ({@see pairGames()}), at most `esports.tournaments.sequence_max_games`.
      *                               Fewer than two: one game, as before (an empty list)
      * @param  'cycle'|'first'  $decider  What a level sequence plays next ({@see DECIDERS})
+     * @param  bool  $atOnce  A correspondence round-robin table (the round robin, or round-robin groups): every game starts at
+     *                        once (as always), or one round after another, each player's next game once both players are done
+     *                        with their earlier ones (DerCaddy, 2026-11-26: "ob die Spiele direkt parallel gespielt werden oder
+     *                        nacheinander"). Live play is always one after another: a player plays one live game at a time
+     *                        (BoardGameService::start(), P5), so it has no choice ({@see roundsAtOnce()})
      */
     public function __construct(
         public int $bestOf = 1,
@@ -105,6 +110,7 @@ final readonly class FormatOptions
         public string $firstPlaceTie = 'playoff',
         public array $games = [],
         public string $decider = 'cycle',
+        public bool $atOnce = true,
     ) {
         $this->pairGame = $games[1] ?? null;
     }
@@ -131,6 +137,15 @@ final readonly class FormatOptions
     public function perLeg(): bool
     {
         return $this->legs === 2 && $this->legPoints;
+    }
+
+    /**
+     * Whether a round-robin table starts all its games at once ({@see $atOnce}): only in correspondence play, and there
+     * unless the organizer chose one round after another. TournamentMatchMaker::queuesRounds() and the Estimator read it.
+     */
+    public function roundsAtOnce(GameProfile $profile): bool
+    {
+        return $profile->allAtOnce && $this->atOnce;
     }
 
     /** What options stored before the choice of legs existed mean ({@see $legs}): two games per pairing. */
@@ -232,6 +247,8 @@ final readonly class FormatOptions
             },
             games: $games,
             decider: $sequence && ($values['decider'] ?? null) === 'first' ? 'first' : 'cycle',
+            // Options stored without the key started every correspondence game at once: they keep doing so.
+            atOnce: ! array_key_exists('atOnce', $values) || filter_var($values['atOnce'], FILTER_VALIDATE_BOOL),
         );
     }
 
@@ -390,7 +407,7 @@ final readonly class FormatOptions
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
             $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes, $this->teamSize,
-            $this->legs, $this->legPoints, $this->firstPlaceTie, $this->games, $this->decider);
+            $this->legs, $this->legPoints, $this->firstPlaceTie, $this->games, $this->decider, $this->atOnce);
     }
 
     /**
@@ -402,7 +419,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string, games: list<string>, decider: string}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string, games: list<string>, decider: string, atOnce: bool}
      */
     public function toArray(): array
     {
@@ -433,6 +450,7 @@ final readonly class FormatOptions
             'firstPlaceTie' => $this->firstPlaceTie,
             'games' => $this->games,
             'decider' => $this->decider,
+            'atOnce' => $this->atOnce,
         ];
     }
 }
