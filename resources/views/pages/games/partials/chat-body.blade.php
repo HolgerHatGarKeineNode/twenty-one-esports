@@ -1,5 +1,8 @@
-{{-- Messages and input of the game chat, shared by the desktop panel and the mobile sheet (partials/chat). --}}
-<ol aria-live="polite" class="m-0 flex min-h-0 grow list-none flex-col justify-end gap-3 overflow-y-auto px-4 py-3 text-[13px] leading-normal" data-test="chat-messages">
+{{-- Messages and input of the game chat, shared by the desktop panel and the mobile sheet (partials/chat).
+     No justify-end on the list: in a scroll box it puts the lines that do not fit out of reach above the top
+     (2026-11-27, Pixel 6a). The margin before the first line keeps a short chat at the bottom; gameChat.follow()
+     keeps a long one at its newest line. --}}
+<ol aria-live="polite" x-init="follow($el)" class="m-0 flex min-h-0 grow list-none flex-col gap-3 overflow-y-auto px-4 py-3 text-[13px] leading-normal before:mt-auto before:content-['']" data-test="chat-messages">
     <template x-for="m in messages" :key="m.id">
         <li class="flex flex-col gap-0.5" :data-from="m.from">
             <span class="text-[11px]" :class="{ 'text-btc-hi': m.from === 'me', 'text-ink-2': m.from === 'them', 'text-ink-3': m.from === 'server' }">
