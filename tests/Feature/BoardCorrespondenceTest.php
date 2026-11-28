@@ -486,6 +486,34 @@ test('the correspondence page sends a challenge, and the other player accepts it
     $this->get(route('board.correspondence', Checkers::SLUG))->assertOk()->assertSeeHtml('data-test="correspondence-login"');
 });
 
+test('the dock keeps a game on the player, however many newer games wait behind it', function () {
+    // The 25 games stand in for a tournament's, which start without a challenge: one player may send only
+    // `challenges_per_day` (20) correspondence challenges a day, so the 21st was refused (challenge_limit).
+    config(['esports.board_games.correspondence.challenges_per_day' => 25]);
+
+    $anna = correspondencePlayer();
+
+    // Anna's own move, in the oldest game of all.
+    $mine = correspondenceGame($anna, correspondencePlayer());
+
+    // A tournament starts a lot of games at once: more than the old cap of 20, all newer, all waiting for the opponent.
+    $waiting = collect(range(1, 24))->map(function () use ($anna): BoardGame {
+        $game = correspondenceGame($anna, correspondencePlayer());
+        $game->update(['turn' => 'b']);
+
+        return $game;
+    });
+
+    $items = app(OpenMatches::class)->for($anna)->keyBy('key');
+
+    expect($mine->refresh()->turn)->toBe('w')
+        ->and($items->get('board-'.$mine->id)?->phase)->toBe('your_move')
+        ->and($items->filter(fn ($item) => $item->kind === 'board')->count())->toBe(25)
+        ->and(OpenMatches::count($items->values()))->toMatchArray(['need' => 1, 'wait' => 24, 'open' => 25])
+        // And it leads the list: what is on the player comes before what waits.
+        ->and($items->keys()->first())->toBe('board-'.$mine->id);
+});
+
 test('the correspondence page offers rated only while it is open, and names the fix when the two do not list each other', function () {
     correspondenceSeason();
     [$anna, $bert] = [correspondencePlayer(), correspondencePlayer()];
